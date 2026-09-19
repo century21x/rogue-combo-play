@@ -7,8 +7,8 @@
   <title>ROGUE COMBO — 액션 로그라이크 프로토타입</title>
   <style>
 :root {
-  --bg: #0b0c14; --panel: rgba(16, 18, 32, 0.94); --line: rgba(255,255,255,0.14);
-  --text: #e8e8f0; --dim: #8a8fa8; --gold: #ffd700; --phys: #ffb347; --magic: #b58cff; --pass: #7cff9c;
+  --bg: #0b0d14; --panel: rgba(14, 16, 26, 0.95); --line: rgba(214,176,90,0.22);
+  --text: #e8e6de; --dim: #8a8d9c; --gold: #e0b85a; --phys: #ffb347; --magic: #b58cff; --pass: #7cff9c;
   --font: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
 }
 * { box-sizing: border-box; }
@@ -324,6 +324,22 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       hitStun: 0.3,
       postHitInvuln: 0.5,
       skillLevelDmgStep: 0.15,
+      // ── 공중 콤보 / 흘리기 / 타격감 (v0.5) ──
+      dirRecentMs: 260,
+      // ↑/↓ 를 이 시간 안에 눌렀으면 J 가 올려치기/내려찍기
+      launcher: { vel: 540, mul: 1.25, knock: 30, range: 95, hang: 0.4 },
+      // ↑+J: 적을 띄움. hang = 정점 부근 중력 배율
+      airHit: { maxHits: 3, lift: 190, mul: 0.85, hop: 300, range: 110 },
+      // 공중의 적에게 J: 추가타(살짝 더 띄움), 플레이어는 짧게 점프
+      slam: { mul: 2.2, radius: 130, knock: 280, jumpVel: 380, fallVel: -900, range: 130 },
+      // ↓+J: 내려찍기 + 착지 충격파
+      parry: { window: 0.18, counterMul: 2.6, counterTime: 1.8, enemyStun: 1.4, range: 120 },
+      // L 타이밍 흘리기 → 다음 J 강한 반격
+      hitStop: { normal: 0.035, heavy: 0.07, counter: 0.12, kill: 0.05 },
+      // 적중 시 정지(초)
+      comboGrades: [[40, "S"], [24, "A"], [12, "B"], [5, "C"]],
+      // 연속 적중 수 → 등급
+      comboFlavor: { C: "흐름을 이어라", B: "멈추지 마라", A: "불꽃이 번진다", S: "재를 남기지 마라" },
       moveTapDelay: 0.11
       // 정지 상태에서 방향키를 이 시간(초) 이상 눌러야 이동 시작 — 짧은 탭은 커맨드 입력으로만 (A2)
     },
@@ -3388,6 +3404,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.derived = null;
       this.hitCombo = 0;
       this.hitComboTimer = 0;
+      this.attackKind = "normal";
+      this.counterReady = 0;
+      this.ghosts = [];
+      this.slamFell = false;
     }
     get invulnerable() {
       return this.buffs.some((b) => b.mods.invulnerable);
@@ -3407,6 +3427,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           return free || this.state === "attack" || this.state === "guard";
         case "attack":
           return free || this.state === "attack";
+        case "special":
+          return free || this.state === "attack" && this.attackKind === "normal";
+        // 올려치기/공중타/반격: 일반 콤보에서 캔슬 가능
+        case "slam":
+          return (free || this.state === "attack") && this.z === 0;
         case "dodge":
           return (free || this.state === "attack" || this.state === "guard") && this.dodgeCd <= 0;
         case "jump":
@@ -3421,7 +3446,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     normalAttack(game2) {
       if (!this.canAct("attack")) return false;
       if (this.state === "attack") {
-        if (this.comboIdx < 2) this.comboQueued = true;
+        if (this.attackKind === "normal" && this.comboIdx < 2) this.comboQueued = true;
         return true;
       }
       this.comboIdx = this.comboTimer > 0 && this.comboIdx < 2 ? this.comboIdx + 1 : 0;
@@ -3430,9 +3455,42 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     beginAttack() {
       this.setState("attack");
+      this.attackKind = "normal";
       this.attackSpawned = false;
       this.comboQueued = false;
       this.attackDur = (this.comboIdx === 2 ? 0.42 : 0.3) / this.derived.atkSpeedMul;
+    }
+    /** 특수 공격 공통 시작: launcher(↑J 올려치기) · air(공중의 적에게 J) · counter(흘리기 후 J) */
+    beginSpecial(kind) {
+      if (!this.canAct("special")) return false;
+      this.skill = null;
+      this.setState("attack");
+      this.attackKind = kind;
+      this.attackSpawned = false;
+      this.comboQueued = false;
+      this.attackDur = ({ launcher: 0.4, air: 0.3, counter: 0.5 }[kind] || 0.35) / this.derived.atkSpeedMul;
+      if (kind === "air" && this.z === 0) this.vz = C.airHit.hop;
+      if (kind === "counter") this.counterReady = 0;
+      return true;
+    }
+    launcher() {
+      return this.beginSpecial("launcher");
+    }
+    airAttack() {
+      return this.beginSpecial("air");
+    }
+    counter() {
+      return this.beginSpecial("counter");
+    }
+    /** ↓+J 내려찍기: 뛰어올랐다가 급강하, 착지 충격파 */
+    slam() {
+      if (!this.canAct("slam")) return false;
+      this.skill = null;
+      this.setState("slam");
+      this.slamFell = false;
+      this.attackSpawned = false;
+      this.vz = C.slam.jumpVel;
+      return true;
     }
     startDodge() {
       if (!this.canAct("dodge")) return false;
@@ -3638,6 +3696,9 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       for (const b of this.buffs) b.remaining -= dt;
       this.buffs = this.buffs.filter((b) => b.remaining > 0);
+      if (this.counterReady > 0) this.counterReady -= dt;
+      for (const gh of this.ghosts) gh.t += dt;
+      this.ghosts = this.ghosts.filter((gh) => gh.t < 0.28);
       this.mp = Math.min(d.maxMp, this.mp + d.mpRegen * dt);
       if (this.z > 0 || this.vz !== 0) {
         this.vz -= C.gravity * dt;
@@ -3658,33 +3719,129 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           break;
         case "dodge":
           this.x += this.facing * C.dodgeDistance / C.dodgeDuration * dt;
+          if (!this.ghosts.length || this.ghosts[this.ghosts.length - 1].t > 0.045) this.ghosts.push({ x: this.x, y: this.y, z: this.z, facing: this.facing, t: 0 });
           if (this.stateT >= C.dodgeDuration) this.setState("idle");
           break;
+        case "slam": {
+          if (!this.slamFell && this.vz <= 0 && this.z > 0) {
+            this.vz = C.slam.fallVel;
+            this.slamFell = true;
+          }
+          if (this.slamFell && this.z === 0 && !this.attackSpawned) {
+            this.attackSpawned = true;
+            this.stateT = 0;
+            game2.spawnHitbox({
+              owner: "player",
+              x1: this.x - C.slam.radius,
+              x2: this.x + C.slam.radius,
+              y: this.y,
+              laneTol: 70,
+              mul: C.slam.mul,
+              level: 1,
+              dmgType: "physical",
+              knock: C.slam.knock,
+              stun: 0.5,
+              ttl: 0.08,
+              tag: "slam",
+              kind: "slam"
+            });
+            game2.fxRing(this.x, this.y, C.slam.radius, "#ffb347");
+            game2.fxRing(this.x, this.y, C.slam.radius * 0.5, "#fff");
+            game2.addFx({ kind: "shock", x: this.x, y: this.y, r: C.slam.radius, life: 0.35 });
+            game2.shake(7);
+          } else if (this.attackSpawned && this.stateT >= 0.22) {
+            this.comboTimer = C.comboWindow;
+            this.setState("idle");
+          } else if (!this.attackSpawned && this.stateT > 1.2) this.setState("idle");
+          break;
+        }
         case "guard":
           if (!inp.isDown("guard")) this.setState("idle");
           break;
         case "attack": {
+          const k = this.attackKind, f = this.facing;
           if (!this.attackSpawned && this.stateT >= this.attackDur * 0.35) {
             this.attackSpawned = true;
-            const last2 = this.comboIdx === 2;
-            game2.spawnHitbox({
-              owner: "player",
-              x1: this.x - this.facing * 15,
-              x2: this.x + this.facing * (last2 ? 110 : 95),
-              y: this.y,
-              laneTol: 38,
-              mul: C.comboMuls[this.comboIdx],
-              level: 1,
-              dmgType: "physical",
-              knock: last2 ? 300 : 60,
-              stun: last2 ? 0.45 : 0.25,
-              ttl: 0.08,
-              tag: "combo" + this.comboIdx
-            });
-            game2.fxSlash(this.x + this.facing * 55, this.y - 35 - this.z, this.facing, last2 ? 90 : 70, "#fff");
+            if (k === "launcher") {
+              const L = C.launcher;
+              game2.spawnHitbox({
+                owner: "player",
+                x1: this.x - f * 10,
+                x2: this.x + f * L.range,
+                y: this.y,
+                laneTol: 40,
+                mul: L.mul,
+                level: 1,
+                dmgType: "physical",
+                knock: L.knock,
+                launch: L.vel,
+                stun: 0.3,
+                ttl: 0.08,
+                tag: "launcher",
+                kind: "launcher"
+              });
+              game2.addFx({ kind: "arc", x: this.x + f * 30, y: this.y - 30 - this.z, facing: f, len: 95, color: "#ffe0a0", up: true, life: 0.2 });
+            } else if (k === "air") {
+              const A = C.airHit;
+              game2.spawnHitbox({
+                owner: "player",
+                x1: this.x - f * 15,
+                x2: this.x + f * A.range,
+                y: this.y,
+                laneTol: 45,
+                mul: A.mul,
+                level: 1,
+                dmgType: "physical",
+                knock: 40,
+                lift: A.lift,
+                stun: 0.25,
+                ttl: 0.08,
+                tag: "air",
+                kind: "air"
+              });
+              game2.fxSlash(this.x + f * 50, this.y - 60 - this.z, f, 80, "#fff");
+            } else if (k === "counter") {
+              const P2 = C.parry;
+              game2.spawnHitbox({
+                owner: "player",
+                x1: this.x - f * 20,
+                x2: this.x + f * P2.range,
+                y: this.y,
+                laneTol: 50,
+                mul: P2.counterMul,
+                level: 1,
+                dmgType: "physical",
+                knock: 380,
+                stun: 0.6,
+                ttl: 0.1,
+                tag: "counter",
+                kind: "counter"
+              });
+              game2.addFx({ kind: "arc", x: this.x + f * 40, y: this.y - 40 - this.z, facing: f, len: 130, color: "#ff4a3a", life: 0.28 });
+              game2.fxText(this.x, this.y - this.h - 34 - this.z, "반격!", "#ff6a5a", 22);
+            } else {
+              const last2 = this.comboIdx === 2;
+              game2.spawnHitbox({
+                owner: "player",
+                x1: this.x - f * 15,
+                x2: this.x + f * (last2 ? 110 : 95),
+                y: this.y,
+                laneTol: 38,
+                mul: C.comboMuls[this.comboIdx],
+                level: 1,
+                dmgType: "physical",
+                knock: last2 ? 300 : 60,
+                stun: last2 ? 0.45 : 0.25,
+                ttl: 0.08,
+                tag: "combo" + this.comboIdx,
+                kind: last2 ? "heavy" : "normal"
+              });
+              game2.fxSlash(this.x + f * 55, this.y - 35 - this.z, f, last2 ? 90 : 70, last2 ? "#ffd9a0" : "#fff");
+            }
           }
-          this.x += this.facing * 40 * dt;
-          if (this.comboQueued && this.stateT >= this.attackDur * 0.6 && this.comboIdx < 2) {
+          if (k === "normal") this.x += f * 40 * dt;
+          else if (k === "counter") this.x += f * (this.stateT < this.attackDur * 0.4 ? 260 : 0) * dt;
+          if (k === "normal" && this.comboQueued && this.stateT >= this.attackDur * 0.6 && this.comboIdx < 2) {
             this.comboIdx++;
             this.beginAttack(game2);
           } else if (this.stateT >= this.attackDur) {
@@ -3721,6 +3878,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
 
   // src/entities/Enemy.js
   var G = BALANCE.combat.gravity;
+  function isHeavy(p) {
+    if (!p) return false;
+    if (p.heavy != null) return !!p.heavy;
+    return ["charge", "slam", "breath", "leap", "explode"].includes(p.kind) || p.kind === "melee" && (p.mul || 1) >= 1.3;
+  }
   var NEXT_ID = 1;
   var Enemy = class {
     constructor(def, x, y, opts = {}) {
@@ -3785,7 +3947,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.stateT = 0;
     }
     // ── 피격 ────────────────────────────────────────────────
-    takeHit({ dmg, fromX, knock = 0, launch = 0, stun = 0.3, freeze = 0 }) {
+    takeHit({ dmg, fromX, knock = 0, launch = 0, stun = 0.3, freeze = 0, lift = 0 }) {
       if (this.state === "dead" || this.state === "reviving") return { ignored: true };
       if (this.shieldHits > 0) {
         this.shieldHits--;
@@ -3800,6 +3962,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (this.boss) {
         knock *= 0.25;
         launch = 0;
+        lift = 0;
         if (stun < 0.5) stun = 0;
         else stun *= 0.5;
       }
@@ -3808,7 +3971,15 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         this.vz = launch;
         this.knockVx = dir * knock * 0.6;
         this.act = null;
+        this.pending = null;
+        this.juggleHits = 0;
         this.setState("launched");
+      } else if (this.z > 0 && this.state === "launched") {
+        if (lift > 0) {
+          this.vz = Math.max(this.vz, lift);
+          this.juggleHits = (this.juggleHits || 0) + 1;
+        } else this.vz = Math.max(this.vz, 60);
+        this.knockVx = dir * knock * 0.4;
       } else if (stun > 0) {
         this.stunT = stun;
         this.knockVx = dir * knock;
@@ -3818,6 +3989,17 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         this.knockVx = dir * knock;
       }
       return { hit: true };
+    }
+    /** 흘리기 당함: 예고 중이던 공격이 취소되고 길게 경직 (플레이어 반격 기회) */
+    parried(stun, fromX) {
+      if (this.state === "dead" || this.state === "reviving") return;
+      const dir = fromX === this.x ? -this.facing : Math.sign(this.x - fromX);
+      this.pending = null;
+      this.act = null;
+      this.stunT = this.boss ? stun * 0.5 : stun;
+      this.knockVx = dir * 120;
+      this.hitFlash = 0.2;
+      this.setState("hit");
     }
     // ── 패턴 조건 ───────────────────────────────────────────
     canStart(p, game2, dist, dy) {
@@ -3855,6 +4037,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     /** 선딜이 끝난 뒤 실행 */
     execute(p, game2) {
       const pl = game2.player, d = this.def;
+      this.lastPattern = p;
       const front = (range, tol = 34) => ({ x1: this.x, x2: this.x + this.facing * range, y: this.y, laneTol: tol });
       switch (p.kind) {
         case "melee":
@@ -4014,7 +4197,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       if (this.state !== "act" || ((_a4 = this.act) == null ? void 0 : _a4.p.kind) !== "leap") {
         if (this.z > 0 || this.vz !== 0) {
-          this.vz -= G * dt;
+          const gm = this.state === "launched" && Math.abs(this.vz) < 140 ? BALANCE.combat.launcher.hang : 1;
+          this.vz -= G * gm * dt;
           this.z += this.vz * dt;
           if (this.z <= 0) {
             this.z = 0;
@@ -4105,6 +4289,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     W = CANVAS.width;
     H = CANVAS.height;
   }
+  var C2 = BALANCE.combat;
   var FONT = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif';
   var Renderer = class {
     constructor(canvas2, game2) {
@@ -4179,48 +4364,76 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const ctx = this.ctx, g = this.game, r = g.room, cam = g.camX;
       const boss = r.cell.type === "boss", esc2 = r.cell.type === "escape", sanct = r.cell.type === "sanctuary";
       const sky = ctx.createLinearGradient(0, 0, 0, ROOM.floorTop);
-      sky.addColorStop(0, boss ? "#2a0f14" : esc2 ? "#102a2e" : sanct ? "#2a2014" : "#141a33");
-      sky.addColorStop(1, boss ? "#3a1a22" : esc2 ? "#1c3a3e" : sanct ? "#3a2e1c" : "#2b2340");
+      sky.addColorStop(0, boss ? "#1e0c10" : esc2 ? "#0c1c20" : sanct ? "#1c160e" : "#0d1018");
+      sky.addColorStop(1, boss ? "#2e161c" : esc2 ? "#163034" : sanct ? "#2c2416" : "#1a1e2c");
       ctx.fillStyle = sky;
       ctx.fillRect(cam, 0, W, ROOM.floorTop);
-      ctx.fillStyle = "rgba(0,0,0,0.25)";
-      ctx.fillRect(cam, 120, W, ROOM.floorTop - 120);
-      for (let i = -1; i < 10; i++) {
-        const wx = i * 240 + cam * 0.4;
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(wx, 100, 34, ROOM.floorTop - 100);
-        ctx.fillStyle = "rgba(255,255,255,0.08)";
-        ctx.fillRect(wx + 6, 100, 8, ROOM.floorTop - 100);
-        ctx.fillStyle = `rgba(255,${150 + Math.sin(g.time * 8 + i) * 40 | 0},60,0.85)`;
+      const top = ROOM.floorTop;
+      for (let i = -1; i < 12; i++) {
+        const wx = i * 200 + cam * 0.4, aw = 120, ah = top - 70;
+        ctx.fillStyle = boss ? "rgba(80,30,40,0.45)" : "rgba(30,36,56,0.9)";
         ctx.beginPath();
-        ctx.arc(wx + 120, 200 + Math.sin(g.time * 6 + i) * 2, 6, 0, Math.PI * 2);
+        ctx.moveTo(wx, top);
+        ctx.lineTo(wx, 70 + aw * 0.5);
+        ctx.arc(wx + aw / 2, 70 + aw * 0.5, aw / 2, Math.PI, 0);
+        ctx.lineTo(wx + aw, top);
+        ctx.closePath();
         ctx.fill();
-        const glow = ctx.createRadialGradient(wx + 120, 200, 4, wx + 120, 200, 90);
-        glow.addColorStop(0, "rgba(255,170,60,0.22)");
-        glow.addColorStop(1, "rgba(255,170,60,0)");
-        ctx.fillStyle = glow;
-        ctx.fillRect(wx + 30, 110, 180, 180);
+        ctx.strokeStyle = "rgba(255,255,255,0.06)";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.fillStyle = "rgba(0,0,0,0.35)";
+        ctx.fillRect(wx + 12, 96, aw - 24, ah - 30);
+        ctx.fillStyle = "rgba(255,255,255,0.035)";
+        for (let b = 0; b < 3; b++) ctx.fillRect(wx + 24 + b * 32, 96, 4, ah - 30);
+        ctx.fillStyle = "rgba(255,255,255,0.05)";
+        ctx.fillRect(wx + aw, 60, 26, top - 60);
+        ctx.fillStyle = "rgba(0,0,0,0.25)";
+        ctx.fillRect(wx + aw + 18, 60, 8, top - 60);
+        if (i % 2 === 0) {
+          const fx = wx + aw / 2, fy = 250 + Math.sin(g.time * 6 + i) * 2;
+          ctx.fillStyle = `rgba(255,${170 + Math.sin(g.time * 8 + i) * 40 | 0},80,0.9)`;
+          ctx.beginPath();
+          ctx.ellipse(fx, fy, 4, 7, 0, 0, Math.PI * 2);
+          ctx.fill();
+          const glow = ctx.createRadialGradient(fx, fy, 3, fx, fy, 80);
+          glow.addColorStop(0, "rgba(255,180,80,0.2)");
+          glow.addColorStop(1, "rgba(255,180,80,0)");
+          ctx.fillStyle = glow;
+          ctx.fillRect(fx - 80, fy - 80, 160, 160);
+        }
       }
-      const fl = ctx.createLinearGradient(0, ROOM.floorTop - 20, 0, H);
-      fl.addColorStop(0, boss ? "#4a2a2a" : "#3c3550");
-      fl.addColorStop(1, boss ? "#2a1414" : "#1e1a2c");
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.fillRect(cam, top - 26, W, 26);
+      ctx.fillStyle = "rgba(214,176,90,0.35)";
+      ctx.fillRect(cam, top - 4, W, 2);
+      const fl = ctx.createLinearGradient(0, top - 20, 0, H);
+      fl.addColorStop(0, boss ? "#3a2222" : "#2e3040");
+      fl.addColorStop(1, boss ? "#1e1010" : "#15161f");
       ctx.fillStyle = fl;
-      ctx.fillRect(cam - 50, ROOM.floorTop - 20, W + 100, H - ROOM.floorTop + 20);
-      ctx.strokeStyle = "rgba(255,255,255,0.06)";
+      ctx.fillRect(cam - 50, top - 20, W + 100, H - top + 20);
+      ctx.strokeStyle = "rgba(255,255,255,0.055)";
       ctx.lineWidth = 1;
-      for (let y = ROOM.floorTop; y <= ROOM.floorBottom + 20; y += 36) {
+      let row = 0;
+      for (let y = top; y <= ROOM.floorBottom + 24; y += 44, row++) {
         ctx.beginPath();
         ctx.moveTo(cam, y);
         ctx.lineTo(cam + W, y);
         ctx.stroke();
+        const off = row % 2 ? 70 : 0;
+        for (let x = -140 + off; x <= r.width + 140; x += 140) {
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x, Math.min(y + 44, ROOM.floorBottom + 24));
+          ctx.stroke();
+        }
       }
-      for (let x = 0; x <= r.width; x += 90) {
-        ctx.beginPath();
-        ctx.moveTo(x, ROOM.floorTop - 20);
-        ctx.lineTo(x, H);
-        ctx.stroke();
-      }
-      ctx.fillStyle = "rgba(0,0,0,0.5)";
+      const vg = ctx.createLinearGradient(0, ROOM.floorBottom - 40, 0, H);
+      vg.addColorStop(0, "rgba(0,0,0,0)");
+      vg.addColorStop(1, "rgba(0,0,0,0.55)");
+      ctx.fillStyle = vg;
+      ctx.fillRect(cam - 50, ROOM.floorBottom - 40, W + 100, H);
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
       ctx.fillRect(0, 0, ROOM.wallLeft, H);
       ctx.fillRect(r.width, 0, 60, H);
     }
@@ -4262,6 +4475,43 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.fillRect(x - 11, y - 70, 22, 8);
       ctx.fillStyle = "#222";
       ctx.fillRect(x + facing * 4 - 1, y - 60, 3, 3);
+    }
+    /** 파괴물: 항아리 / 나무 상자 */
+    drawBreakable(o) {
+      const ctx = this.ctx, x = o.x, y = o.y;
+      ctx.fillStyle = "rgba(0,0,0,0.35)";
+      ctx.beginPath();
+      ctx.ellipse(x, y, 22, 7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      if (o.kind === "pot") {
+        ctx.fillStyle = "#b8783a";
+        ctx.beginPath();
+        ctx.moveTo(x - 14, y);
+        ctx.quadraticCurveTo(x - 24, y - 26, x - 10, y - 40);
+        ctx.lineTo(x + 10, y - 40);
+        ctx.quadraticCurveTo(x + 24, y - 26, x + 14, y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.fillStyle = "#8a5a2a";
+        ctx.fillRect(x - 12, y - 44, 24, 6);
+        ctx.fillStyle = "#e0a060";
+        ctx.beginPath();
+        ctx.moveTo(x - 6, y - 30);
+        ctx.lineTo(x, y - 22);
+        ctx.lineTo(x + 6, y - 30);
+        ctx.lineTo(x, y - 14);
+        ctx.closePath();
+        ctx.fill();
+      } else {
+        ctx.fillStyle = "#9a7040";
+        ctx.fillRect(x - 18, y - 34, 36, 34);
+        ctx.fillStyle = "#6a4a28";
+        ctx.fillRect(x - 18, y - 34, 36, 4);
+        ctx.fillRect(x - 18, y - 4, 36, 4);
+        ctx.fillRect(x - 3, y - 34, 6, 34);
+        ctx.fillStyle = "#c8b090";
+        ctx.fillRect(x - 18, y - 22, 36, 3);
+      }
     }
     nearPlayer(o, dx = 75) {
       const p = this.game.player;
@@ -4325,6 +4575,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         }
       }
       for (const o of r.props) {
+        if (o.breakable) {
+          if (!o.broken) this.drawBreakable(o);
+          continue;
+        }
         const near = this.nearPlayer(o, 70), t = g.time;
         ctx.fillStyle = "rgba(0,0,0,0.35)";
         ctx.beginPath();
@@ -4559,6 +4813,30 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const ctx = this.ctx, x = p.x, y = p.y - p.z, f = p.facing;
       this.shadow(p.x, p.y, p.w, p.z);
       ctx.save();
+      ctx.strokeStyle = p.counterReady > 0 ? "#ffd700" : "rgba(230,200,130,0.55)";
+      ctx.lineWidth = p.counterReady > 0 ? 3 : 1.5;
+      if (p.counterReady > 0) {
+        ctx.shadowColor = "#ffd700";
+        ctx.shadowBlur = 12;
+      }
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 24, 8, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.beginPath();
+      ctx.moveTo(p.x + f * 30, p.y);
+      ctx.lineTo(p.x + f * 22, p.y - 4);
+      ctx.lineTo(p.x + f * 22, p.y + 4);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+      for (const gh of p.ghosts) {
+        ctx.save();
+        ctx.globalAlpha = 0.35 * (1 - gh.t / 0.28);
+        this.paintPlayer(ctx, gh.x, gh.y - gh.z, gh.facing, p.gender, { ghost: true, t: this.game.time });
+        ctx.restore();
+      }
+      ctx.save();
       if (p.state === "dodge") ctx.globalAlpha = 0.55;
       for (const b of p.buffs) {
         ctx.strokeStyle = b.color || "#fff";
@@ -4573,11 +4851,14 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.paintPlayer(ctx, x, y, f, p.gender, {
         flash: p.hitFlash > 0,
         legSwing: p.state === "move" ? Math.sin(this.game.time * 14) * 6 : 0,
-        swing: p.state === "attack" || p.state === "skill" && ((_a4 = p.skill) == null ? void 0 : _a4.def.type) !== "magic" ? p.state === "attack" ? Math.min(1, p.stateT / p.attackDur) : 0.5 : null,
+        swing: p.state === "attack" || p.state === "skill" && ((_a4 = p.skill) == null ? void 0 : _a4.def.type) !== "magic" ? p.state === "attack" ? Math.min(1, p.stateT / p.attackDur) : 0.5 : p.state === "slam" ? p.slamFell ? 1 : 0 : null,
+        swingUp: p.state === "attack" && p.attackKind === "launcher",
         guard: p.state === "guard",
         casting: p.state === "skill" && ((_b = p.skill) == null ? void 0 : _b.def.type) === "magic",
+        counter: p.counterReady > 0,
         weapon: (inv == null ? void 0 : inv.equipped.weapon) ? (_c = ITEMS[inv.equipped.weapon]) == null ? void 0 : _c.visual : null,
         armor: (inv == null ? void 0 : inv.equipped.armor) ? (_d = ITEMS[inv.equipped.armor]) == null ? void 0 : _d.visual : null,
+        accessory: (inv == null ? void 0 : inv.equipped.accessory) ? { color: "#ffd700" } : null,
         t: this.game.time
       });
       ctx.restore();
@@ -4588,17 +4869,71 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const flash = !!o.flash, t = o.t || 0;
       const body = ((_a4 = o.armor) == null ? void 0 : _a4.color) || (gender === "male" ? "#4f8cff" : "#ff6fa8");
       const skin = "#ffd9b3";
-      ctx.fillStyle = flash ? "#fff" : "#2b2b3a";
       const legSwing = o.legSwing || 0;
+      if (o.ghost) {
+        ctx.fillStyle = "#9ad0ff";
+        ctx.fillRect(x - 14, y - 50, 28, 32);
+        ctx.beginPath();
+        ctx.arc(x, y - 60, 12, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(x - 11, y - 20, 9, 20);
+        ctx.fillRect(x + 2, y - 20, 9, 20);
+        return;
+      }
+      if (o.armor) {
+        const cape = o.armor.color;
+        const wave = Math.sin(t * 6) * 3, sw = o.swing != null ? 10 : 0;
+        ctx.fillStyle = flash ? "#fff" : cape;
+        ctx.globalAlpha *= 0.85;
+        ctx.beginPath();
+        ctx.moveTo(x - f * 4, y - 50);
+        ctx.lineTo(x + f * 6, y - 50);
+        ctx.quadraticCurveTo(x - f * (18 + sw), y - 34 + wave, x - f * (14 + sw), y - 12 + wave);
+        ctx.lineTo(x - f * (26 + sw), y - 8 + wave);
+        ctx.quadraticCurveTo(x - f * 20, y - 30, x - f * 4, y - 50);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha /= 0.85;
+      }
+      ctx.fillStyle = flash ? "#fff" : "#2b2b3a";
       ctx.fillRect(x - 11 + legSwing, y - 20, 9, 20);
       ctx.fillRect(x + 2 - legSwing, y - 20, 9, 20);
-      ctx.fillStyle = flash ? "#fff" : body;
-      ctx.fillRect(x - 14, y - 50, 28, 32);
       if (o.armor) {
-        ctx.fillStyle = "rgba(0,0,0,0.18)";
+        ctx.fillStyle = flash ? "#fff" : body;
+        ctx.fillRect(x - 14, y - 50, 28, 32);
+        ctx.fillStyle = "rgba(0,0,0,0.22)";
         ctx.fillRect(x - 14, y - 50, 28, 6);
-        ctx.fillStyle = "rgba(255,255,255,0.14)";
-        ctx.fillRect(x - 3, y - 44, 6, 22);
+        ctx.fillRect(x - 14, y - 24, 28, 4);
+        ctx.fillStyle = "rgba(255,255,255,0.16)";
+        ctx.fillRect(x - 3, y - 44, 6, 20);
+        ctx.fillStyle = flash ? "#fff" : body;
+        ctx.beginPath();
+        ctx.ellipse(x - 15, y - 47, 7, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(x + 15, y - 47, 7, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "rgba(214,176,90,0.7)";
+        ctx.fillRect(x - 3, y - 26, 6, 6);
+      } else {
+        ctx.fillStyle = flash ? "#fff" : skin;
+        ctx.fillRect(x - 13, y - 50, 26, 32);
+        ctx.fillStyle = flash ? "#fff" : "rgba(0,0,0,0.12)";
+        ctx.fillRect(x - 1, y - 46, 2, 22);
+        ctx.fillStyle = flash ? "#fff" : gender === "male" ? "#e8e8f0" : "#ffd0e0";
+        ctx.fillRect(x - 13, y - 26, 26, 8);
+        if (gender === "female") ctx.fillRect(x - 13, y - 46, 26, 7);
+      }
+      if (o.accessory) {
+        ctx.fillStyle = o.accessory.color || "#ffd700";
+        ctx.beginPath();
+        ctx.arc(x, y - 47, 3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = "rgba(214,176,90,0.8)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(x, y - 52, 7, 0.2, Math.PI - 0.2);
+        ctx.stroke();
       }
       ctx.fillStyle = flash ? "#fff" : skin;
       ctx.beginPath();
@@ -4616,17 +4951,19 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.fillRect(x + f * 5 - 1, y - 62, 3, 3);
       const w = o.weapon || { shape: "sword", color: "#c8c8d8", bare: true };
       const hx = x + f * 12, hy = y - 38;
-      const ang = o.swing != null ? -1.2 + o.swing * 2.2 : -1.1;
+      const ang = o.swing != null ? o.swingUp ? 1 - o.swing * 2.4 : -1.2 + o.swing * 2.2 : -1.1;
       const len = { dagger: 22, sword: 34, greatsword: 50, staff: 46, mace: 32, scythe: 44 }[w.shape] || 32;
       const ex = hx + f * Math.cos(ang) * len, ey = hy + Math.sin(ang) * len;
       ctx.lineCap = "round";
       if (w.bare) {
-        ctx.strokeStyle = "#c8c8d8";
-        ctx.lineWidth = 3;
+        const punch = o.swing != null ? Math.sin(Math.min(1, o.swing) * Math.PI) * 16 : 0;
+        ctx.fillStyle = flash ? "#fff" : skin;
         ctx.beginPath();
-        ctx.moveTo(hx, hy + 2);
-        ctx.lineTo(hx + f * 10, hy - 26);
-        ctx.stroke();
+        ctx.arc(hx + f * (4 + punch), hy + 6, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(x - f * 12, hy + 8, 4.5, 0, Math.PI * 2);
+        ctx.fill();
       } else if (w.shape === "staff") {
         ctx.strokeStyle = w.color;
         ctx.lineWidth = 4;
@@ -4871,7 +5208,24 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       if (e.state === "windup" && e.pending) {
         const p = e.pending;
-        ctx.fillStyle = "rgba(255,60,60,0.18)";
+        if (isHeavy(p)) {
+          const k = Math.min(1, e.stateT / Math.max(0.05, p.windup)), pulse = 0.5 + Math.sin(t * 26) * 0.5;
+          ctx.save();
+          ctx.strokeStyle = `rgba(255,${60 + pulse * 40 | 0},50,${0.5 + pulse * 0.5})`;
+          ctx.lineWidth = 3 + k * 3;
+          ctx.shadowColor = "#ff3020";
+          ctx.shadowBlur = 14;
+          ctx.beginPath();
+          ctx.ellipse(x, y - e.h / 2, e.w * 0.65 + 6, e.h * 0.6 + 6, 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
+          ctx.fillStyle = "#ff3a2a";
+          ctx.font = this.f(22, true);
+          ctx.textAlign = "center";
+          ctx.fillText("!", x, ry - 24);
+          ctx.restore();
+        }
+        ctx.fillStyle = isHeavy(p) ? "rgba(255,40,40,0.26)" : "rgba(255,60,60,0.18)";
         if (p.kind === "slam" || p.kind === "explode") {
           ctx.beginPath();
           ctx.ellipse(x, e.y, p.radius, p.radius * 0.35, 0, 0, Math.PI * 2);
@@ -4976,6 +5330,67 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           ctx.beginPath();
           ctx.arc(f.x - f.facing * f.len * 0.3, f.y, f.len * 0.6, Math.min(a0, a1), Math.max(a0, a1));
           ctx.stroke();
+        } else if (f.kind === "dmg") {
+          const pop = k < 0.15 ? 1 + (0.15 - k) * 3 : 1;
+          ctx.font = this.f(Math.round((f.size || 18) * pop), true);
+          ctx.textAlign = "center";
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = "rgba(0,0,0,0.75)";
+          const y = f.y + (f.vy || 0) * f.t + (k > 0.5 ? (k - 0.5) * 30 : 0);
+          ctx.strokeText(f.text, f.x, y);
+          ctx.fillStyle = f.color;
+          ctx.fillText(f.text, f.x, y);
+        } else if (f.kind === "arc") {
+          ctx.lineCap = "round";
+          ctx.shadowColor = f.color;
+          ctx.shadowBlur = 18;
+          const cx = f.x - f.facing * f.len * 0.25, cy = f.y, rr = f.len * 0.6;
+          const a0 = f.up ? 0.9 : -1.2, a1 = f.up ? -1.3 : 1.2;
+          const s = f.facing > 0 ? 1 : -1;
+          ctx.strokeStyle = f.color;
+          ctx.lineWidth = 9 * (1 - k) + 2;
+          ctx.beginPath();
+          ctx.arc(cx, cy, rr, Math.min(a0, a1) * s + (s < 0 ? Math.PI : 0), Math.max(a0, a1) * s + (s < 0 ? Math.PI : 0), s < 0);
+          ctx.stroke();
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 3 * (1 - k) + 1;
+          ctx.shadowBlur = 0;
+          ctx.beginPath();
+          ctx.arc(cx, cy, rr, Math.min(a0, a1) * s + (s < 0 ? Math.PI : 0), Math.max(a0, a1) * s + (s < 0 ? Math.PI : 0), s < 0);
+          ctx.stroke();
+        } else if (f.kind === "shock") {
+          ctx.strokeStyle = "#ffb347";
+          ctx.lineWidth = 6 * (1 - k) + 1;
+          ctx.beginPath();
+          ctx.ellipse(f.x, f.y, f.r * (0.2 + 0.8 * k), f.r * 0.35 * (0.2 + 0.8 * k), 0, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.strokeStyle = "rgba(255,255,255,0.8)";
+          ctx.lineWidth = 2;
+          for (let i = 0; i < 8; i++) {
+            const a = i / 8 * Math.PI * 2;
+            ctx.beginPath();
+            ctx.moveTo(f.x + Math.cos(a) * f.r * 0.3 * k, f.y + Math.sin(a) * f.r * 0.12 * k);
+            ctx.lineTo(f.x + Math.cos(a) * f.r * (0.5 + 0.5 * k), f.y + Math.sin(a) * f.r * 0.35 * (0.5 + 0.5 * k));
+            ctx.stroke();
+          }
+        } else if (f.kind === "parry") {
+          ctx.fillStyle = "#ffd700";
+          ctx.globalAlpha = (1 - k) * 0.9;
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, 10 + 40 * k, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, 20 + 60 * k, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (f.kind === "debris") {
+          ctx.fillStyle = f.color;
+          for (let i = 0; i < 7; i++) {
+            const a = i * 0.9 + 0.3, sp = 90 + i % 3 * 40;
+            const px = f.x + Math.cos(a) * sp * f.t, py = f.y - 20 - Math.sin(a) * sp * f.t + 300 * f.t * f.t;
+            ctx.fillRect(px - 3, py - 3, 6, 6);
+          }
         } else if (f.kind === "chain") {
           ctx.strokeStyle = "#ffe66d";
           ctx.lineWidth = 3;
@@ -5171,11 +5586,16 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.fillStyle = "#ccc";
       ctx.fillText(g.room.sealed ? "봉인 — 제단 퍼즐" : alive ? `남은 적 ${alive}` : (g.room.doors.length ? `출구 ${g.room.doors.length}` : "안전") + `  ·  SP ${g.skills.points}/${g.skills.maxBank}`, W - 170, 40);
       this.drawMinimap(W - 178, 54, 15, 170);
-      if (p.hitCombo > 1) {
-        ctx.font = this.f(20, true);
-        ctx.fillStyle = "#ffd700";
-        ctx.textAlign = "right";
-        ctx.fillText(`${p.hitCombo} HITS`, W - 16, 200);
+      this.drawCombo(W - 16, 215, 0.8);
+      {
+        const hint = g.hintText();
+        ctx.font = this.f(11);
+        ctx.textAlign = "center";
+        const tw = ctx.measureText(hint).width + 16;
+        ctx.fillStyle = "rgba(0,0,0,0.45)";
+        ctx.fillRect(W / 2 - tw / 2, H - 150, tw, 16);
+        ctx.fillStyle = "#e6d5a8";
+        ctx.fillText(hint, W / 2, H - 138);
       }
       const boss = g.room.enemies.find((e) => e.boss && e.state !== "dead");
       let cy = 44;
@@ -5210,111 +5630,261 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       ctx.restore();
     }
+    /** 콤보 카운터 + 등급 (오른쪽). s = 배율 */
+    drawCombo(rx, y, s = 1) {
+      const ctx = this.ctx, g = this.game, p = g.player;
+      if (p.hitCombo < 2) return;
+      ctx.save();
+      ctx.textAlign = "right";
+      const grade = g.comboGrade, GC = { C: "#c8c8d4", B: "#7ad0ff", A: "#ffb347", S: "#ff5a5a" };
+      const pop = p.hitComboTimer > 1.42 ? 1 + (p.hitComboTimer - 1.42) * 4 : 1;
+      ctx.font = this.f(Math.round(44 * s * pop), true);
+      ctx.fillStyle = grade ? GC[grade] : "#e0b85a";
+      ctx.shadowColor = "rgba(0,0,0,0.6)";
+      ctx.shadowBlur = 8;
+      ctx.fillText(String(p.hitCombo), rx, y);
+      ctx.shadowBlur = 0;
+      ctx.font = this.f(Math.round(12 * s), true);
+      ctx.fillStyle = "#e6d5a8";
+      ctx.fillText("COMBO", rx, y + 16 * s);
+      if (grade) {
+        ctx.font = this.f(Math.round(30 * s), true);
+        ctx.fillStyle = GC[grade];
+        ctx.fillText(grade, rx - 76 * s, y - 2);
+      }
+      ctx.font = this.f(Math.round(10 * s));
+      ctx.fillStyle = "#b8b0a0";
+      ctx.fillText(C2.comboFlavor[grade] || "흐름을 이어라", rx, y + 30 * s);
+      const k = Math.max(0, Math.min(1, p.hitComboTimer / 1.5));
+      ctx.fillStyle = "rgba(224,184,90,0.9)";
+      ctx.fillRect(rx - 70 * s * k, y + 36 * s, 70 * s * k, 2);
+      ctx.restore();
+    }
+    goldBar(x, y, w, h, ratio, label, color = null) {
+      const ctx = this.ctx;
+      ctx.save();
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + w, y);
+      ctx.lineTo(x + w - 6, y + h);
+      ctx.lineTo(x, y + h);
+      ctx.closePath();
+      ctx.fill();
+      const rw = w * Math.max(0, Math.min(1, ratio));
+      const gr = ctx.createLinearGradient(x, y, x + w, y);
+      gr.addColorStop(0, color || "#c89a3a");
+      gr.addColorStop(1, color || "#f0cc6a");
+      ctx.fillStyle = gr;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + rw, y);
+      ctx.lineTo(Math.max(x, x + rw - 6), y + h);
+      ctx.lineTo(x, y + h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = "rgba(224,184,90,0.5)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, y + 0.5);
+      ctx.lineTo(x + w, y + 0.5);
+      ctx.lineTo(x + w - 6, y + h - 0.5);
+      ctx.lineTo(x, y + h - 0.5);
+      ctx.closePath();
+      ctx.stroke();
+      if (label) {
+        ctx.font = this.f(11, true);
+        ctx.textAlign = "right";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "rgba(0,0,0,0.7)";
+        ctx.fillText(label, x + w - 12, y + h / 2 + 1);
+        ctx.fillStyle = "#fff2c8";
+        ctx.fillText(label, x + w - 13, y + h / 2);
+      }
+      ctx.restore();
+    }
+    thinBar(x, y, w, h, ratio, color) {
+      const ctx = this.ctx;
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      ctx.fillRect(x, y, w, h);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, w * Math.max(0, Math.min(1, ratio)), h);
+    }
+    panelMini(x, y, w, h) {
+      const ctx = this.ctx;
+      ctx.fillStyle = "rgba(10,10,16,0.7)";
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, 4);
+      ctx.fill();
+      ctx.strokeStyle = "rgba(224,184,90,0.35)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+    /** 하단 스킬 카드 바: 기본기 4장 + 퀵슬롯 4장, 왼쪽 WASD 라벨, 오른쪽 보조 텍스트 */
+    drawCards() {
+      const ctx = this.ctx, g = this.game, p = g.player;
+      const cards = [
+        { key: "J", name: "연속 베기", sub: "3타 마무리", hot: p.state === "attack" && p.attackKind === "normal" },
+        { key: "↑J", name: "올려치기", sub: "적을 띄운다", hot: p.state === "attack" && p.attackKind === "launcher" },
+        { key: "↓J", name: "내려찍기", sub: "공중의 적 · 충격파", hot: p.state === "slam", ready: !!g.airborneEnemyNear(C2.slam.range) },
+        { key: "L", name: "흘리기", sub: p.counterReady > 0 ? "J 강한 반격!" : "붉은 예고를 흘려라", hot: p.counterReady > 0 }
+      ];
+      for (let i = 0; i < 4; i++) {
+        const id = g.skills.quickslots[i], def = id && getSkill(id), cd = id ? g.skills.cooldownLeft(id) : 0;
+        cards.push({
+          key: String(i + 1),
+          name: def ? def.name : "—",
+          sub: def ? cd > 0 ? `${cd.toFixed(1)}s` : def.mpCost ? `MP ${def.mpCost}` : "준비" : "빈 슬롯",
+          cdRatio: id ? g.skills.cooldownRatio(id) : 0,
+          icon: def == null ? void 0 : def.icon,
+          magic: (def == null ? void 0 : def.type) === "magic",
+          dim: !def || def.mpCost && p.mp < def.mpCost
+        });
+      }
+      const n = cards.length, gap = 8, left = 118, right = 168, cw = Math.min(124, Math.floor((W - left - right - gap * (n - 1)) / n)), ch = 46, y0 = H - 14 - ch;
+      let x = left;
+      ctx.textAlign = "left";
+      ctx.font = this.f(13, true);
+      ctx.fillStyle = "#e8e6de";
+      ctx.fillText("W A S D", 24, y0 + 22);
+      ctx.font = this.f(10);
+      ctx.fillStyle = "#8f8a7a";
+      ctx.fillText("이동 · 방향키", 24, y0 + 37);
+      for (const c of cards) {
+        ctx.fillStyle = c.hot ? "rgba(60,44,14,0.85)" : "rgba(12,12,18,0.72)";
+        ctx.beginPath();
+        ctx.roundRect(x, y0, cw, ch, 4);
+        ctx.fill();
+        ctx.strokeStyle = c.hot ? "#e0b85a" : "rgba(255,255,255,0.1)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        if (c.cdRatio > 0) {
+          ctx.fillStyle = "rgba(0,0,0,0.55)";
+          ctx.fillRect(x, y0, cw * c.cdRatio, ch);
+        }
+        if (c.dim) ctx.globalAlpha = 0.5;
+        ctx.textAlign = "left";
+        ctx.font = this.f(12, true);
+        ctx.fillStyle = c.magic ? "#c9a8ff" : "#e0b85a";
+        ctx.fillText(c.key, x + 8, y0 + 18);
+        ctx.fillStyle = "#e8e6de";
+        ctx.fillText((c.icon ? c.icon + " " : "") + c.name, x + 8 + (c.key.length > 1 ? 26 : 16), y0 + 18, cw - 44);
+        ctx.font = this.f(10);
+        ctx.fillStyle = c.hot ? "#ffe0a0" : "#8f8a7a";
+        ctx.fillText(c.sub, x + 8, y0 + 36, cw - 16);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = c.ready || c.hot ? "#e0b85a" : "rgba(224,184,90,0.35)";
+        ctx.fillRect(x + 6, y0 + ch - 3, cw - 12, 2);
+        x += cw + gap;
+      }
+      ctx.textAlign = "right";
+      ctx.font = this.f(10);
+      ctx.fillStyle = "#8f8a7a";
+      ctx.fillText("K 마력탄 · Shift 회피 · Space 점프", W - 16, y0 + 16);
+      ctx.fillText(`Q 물약 ×${g.inv.count("hp_potion")} · F 상호작용 · T I M 창`, W - 16, y0 + 32);
+    }
     drawHUD() {
       if (this.game.compact) return this.drawHUDCompact();
       const ctx = this.ctx, g = this.game, p = g.player, d = p.derived, s = g.stats;
+      const GOLD = "#e0b85a", INK = "#e8e6de", DIM = "#8f8a7a";
       ctx.save();
       ctx.textBaseline = "alphabetic";
-      this.panel(10, 10, 262, 172);
-      ctx.fillStyle = "#fff";
-      ctx.font = this.f(13, true);
+      const tg = ctx.createLinearGradient(0, 0, 0, 120);
+      tg.addColorStop(0, "rgba(0,0,0,0.6)");
+      tg.addColorStop(1, "rgba(0,0,0,0)");
+      ctx.fillStyle = tg;
+      ctx.fillRect(0, 0, W, 120);
       ctx.textAlign = "left";
-      ctx.fillText(`${p.name}  ·  ${g.jobs.current.name}`, 20, 30);
-      this.bar(20, 38, 242, 14, p.hp / d.maxHp, "#e0393e", `HP ${Math.ceil(p.hp)} / ${d.maxHp}`);
-      this.bar(20, 56, 242, 12, p.mp / d.maxMp, "#3a7bd5", `MP ${Math.floor(p.mp)} / ${d.maxMp}`);
+      ctx.font = this.f(14, true);
+      ctx.fillStyle = GOLD;
+      ctx.fillText(p.name, 24, 30);
+      ctx.textAlign = "right";
+      ctx.font = this.f(12);
+      ctx.fillStyle = INK;
+      ctx.fillText(g.jobs.current.name, 300, 30);
+      this.goldBar(24, 38, 276, 14, p.hp / d.maxHp, `${Math.ceil(p.hp)} / ${d.maxHp}`);
+      this.thinBar(24, 58, 276, 4, p.mp / d.maxMp, "#5a8cff");
+      ctx.textAlign = "left";
+      ctx.font = this.f(11);
+      ctx.fillStyle = DIM;
+      ctx.fillText(`MP ${Math.floor(p.mp)}/${d.maxMp}`, 24, 76);
+      ctx.fillStyle = INK;
+      ctx.font = this.f(11, true);
+      ctx.fillText(`스킬 포인트 ${g.skills.points}/${g.skills.maxBank}`, 104, 76);
+      ctx.textAlign = "right";
+      ctx.fillStyle = DIM;
+      ctx.font = this.f(11);
+      ctx.fillText(`픽 ${g.skills.pickCount}/${g.skills.pickCap} · 처치 ${g.kills}`, 300, 76);
       const colors = { STR: "#ff7b5c", AGI: "#7cff9c", VIT: "#ffd35c", INT: "#b58cff" };
       STAT_KEYS.forEach((k, i) => {
-        const y = 82 + i * 24;
+        const x = 24 + i * 70;
+        ctx.textAlign = "left";
+        ctx.font = this.f(10, true);
         ctx.fillStyle = colors[k];
-        ctx.font = this.f(12, true);
-        ctx.textAlign = "left";
-        ctx.fillText(`${STAT_LABEL[k]} ${k}`, 20, y + 10);
-        ctx.fillStyle = "#fff";
-        ctx.font = this.f(12);
-        ctx.textAlign = "right";
-        ctx.fillText(s.value(k).toFixed(2), 262, y + 10);
-        this.bar(92, y + 2, 122, 8, s.progress(k), colors[k]);
+        ctx.fillText(STAT_LABEL[k], x, 94);
+        ctx.font = this.f(10);
+        ctx.fillStyle = INK;
+        ctx.fillText(s.value(k).toFixed(2), x + 24, 94);
+        this.thinBar(x, 98, 60, 2, s.progress(k), colors[k]);
       });
-      const cell = g.room.cell;
-      this.panel(W - 232, 10, 222, 62);
-      ctx.fillStyle = g.room.fog ? "#b8c8d8" : "#fff";
-      ctx.font = this.f(13, true);
-      ctx.textAlign = "left";
-      ctx.fillText(`${g.dungeon.floorIndex + 1}층 · ${ROOM_TYPES[cell.type]} 방${g.room.fog ? " · 짙은 안개" : ""}`, W - 222, 30);
-      const alive = g.room.enemies.filter((e) => e.state !== "dead").length;
-      ctx.font = this.f(12);
-      ctx.fillStyle = "#ccc";
-      ctx.fillText(g.room.sealed ? "출구 봉인 — 제단의 퍼즐" : alive ? `남은 적 ${alive}` : g.room.doors.length ? `출구 ${g.room.doors.length}개` : "안전", W - 222, 50);
-      ctx.fillText(`처치 ${g.kills} · SP ${g.skills.points}/${g.skills.maxBank} · 픽 ${g.skills.pickCount}/${g.skills.pickCap}`, W - 222, 66);
-      this.drawMinimap(W - 232, 80);
-      if (p.hitCombo > 1) {
-        ctx.font = this.f(26, true);
-        ctx.fillStyle = "#ffd700";
-        ctx.textAlign = "right";
-        ctx.fillText(`${p.hitCombo} HITS`, W - 20, 232);
-      }
-      const boss = g.room.enemies.find((e) => e.boss && e.state !== "dead");
-      if (boss) {
-        this.bar(W / 2 - 220, 14, 440, 16, boss.hp / boss.maxHp, "#b3122a", `${boss.def.name}  ${Math.ceil(boss.hp)} / ${boss.maxHp}${boss.def.phases ? `  ·  페이즈 ${boss.phase + 1}/${boss.def.phases.length + 1}` : ""}`);
-      }
-      const sw = 56, gap = 10, x0 = W - (4 * sw + 3 * gap) - 12, y0 = H - sw - 14;
-      for (let i = 0; i < 4; i++) {
-        const x = x0 + i * (sw + gap), id = g.skills.quickslots[i], def = id && getSkill(id);
-        ctx.fillStyle = "rgba(10,10,20,0.7)";
-        ctx.beginPath();
-        ctx.roundRect(x, y0, sw, sw, 8);
-        ctx.fill();
-        ctx.strokeStyle = def ? def.type === "magic" ? "#8f6bff" : "#ffb347" : "rgba(255,255,255,0.2)";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        if (def) {
-          ctx.font = "24px serif";
-          ctx.textAlign = "center";
-          ctx.fillStyle = "#fff";
-          ctx.fillText(def.icon, x + sw / 2, y0 + 30);
-          ctx.font = this.f(10);
-          ctx.fillText(def.name, x + sw / 2, y0 + sw - 6);
-          const cd = g.skills.cooldownRatio(id);
-          if (cd > 0) {
-            ctx.fillStyle = "rgba(0,0,0,0.65)";
-            ctx.beginPath();
-            ctx.roundRect(x, y0, sw, sw * cd, 8);
-            ctx.fill();
-            ctx.fillStyle = "#fff";
-            ctx.font = this.f(14, true);
-            ctx.fillText(g.skills.cooldownLeft(id).toFixed(1), x + sw / 2, y0 + 34);
-          } else if (p.mp < (def.mpCost || 0)) {
-            ctx.fillStyle = "rgba(40,40,120,0.45)";
-            ctx.beginPath();
-            ctx.roundRect(x, y0, sw, sw, 8);
-            ctx.fill();
-          }
-        }
-        ctx.fillStyle = "#ffd700";
-        ctx.font = this.f(11, true);
-        ctx.textAlign = "left";
-        ctx.fillText(String(i + 1), x + 5, y0 + 13);
-      }
-      this.panel(10, H - 74, 262, 64);
-      ctx.textAlign = "left";
-      ctx.font = this.f(12);
-      ctx.fillStyle = "#aaa";
-      ctx.fillText("커맨드", 20, H - 54);
-      ctx.font = this.f(20, true);
-      ctx.fillStyle = g.cmd.modifier ? "#c77dff" : "#ffd27f";
-      ctx.fillText((g.cmd.modifier ? "마법 " : "") + (g.cmd.bufferString(g.now()) || "—"), 72, H - 50);
-      ctx.font = this.f(11);
-      ctx.fillStyle = "#ccc";
-      const potion = g.inv.count("hp_potion");
-      ctx.fillText(`K 마력탄  Q 물약 ×${potion}  F 상호작용  T 스킬  I 가방  M 지도`, 20, H - 22);
       if (p.buffs.length) {
         ctx.textAlign = "left";
-        ctx.font = this.f(12, true);
+        ctx.font = this.f(11, true);
         p.buffs.forEach((b, i) => {
           ctx.fillStyle = b.color || "#fff";
-          ctx.fillText(`${b.name} ${b.remaining.toFixed(1)}s`, 290, H - 60 + i * 16);
+          ctx.fillText(`${b.name} ${b.remaining.toFixed(1)}s`, 24, 120 + i * 15);
         });
       }
+      const rt = g.roomTitle(), fi = g.dungeon.floorIndex, within = fi % 10;
+      ctx.textAlign = "center";
+      for (let i = 0; i < 5; i++) {
+        const on = within >= i * 2;
+        ctx.font = "12px serif";
+        ctx.fillStyle = on ? GOLD : "rgba(224,184,90,0.35)";
+        ctx.fillText(on ? "◆" : "◇", W / 2 - 40 + i * 20, 22);
+      }
+      ctx.font = this.f(17, true);
+      ctx.fillStyle = INK;
+      ctx.fillText(`${rt.no}  /  ${rt.area}`, W / 2, 46);
+      ctx.font = this.f(11);
+      ctx.fillStyle = DIM;
+      ctx.fillText(`${rt.floor}층 · ${g.objectiveText()}`, W / 2, 63);
+      const boss = g.room.enemies.find((e) => e.boss && e.state !== "dead");
+      if (boss) {
+        this.goldBar(W / 2 - 220, 72, 440, 10, boss.hp / boss.maxHp, "", "#b3122a");
+        ctx.font = this.f(11, true);
+        ctx.fillStyle = "#ffb0a0";
+        ctx.fillText(`${boss.def.name}  ${Math.ceil(boss.hp)} / ${boss.maxHp}${boss.def.phases ? `  ·  페이즈 ${boss.phase + 1}/${boss.def.phases.length + 1}` : ""}`, W / 2, 96);
+      }
+      const buf = g.cmd.bufferString(g.now());
+      if (buf || g.cmd.modifier) {
+        ctx.font = this.f(18, true);
+        ctx.fillStyle = g.cmd.modifier ? "#c77dff" : GOLD;
+        ctx.fillText((g.cmd.modifier ? "마법 " : "") + (buf || ""), W / 2, boss ? 118 : 90);
+      }
+      this.hudButtons = [];
+      const mb = (x, label, act, w) => {
+        this.panelMini(x, 14, w, 22);
+        ctx.font = this.f(11);
+        ctx.textAlign = "center";
+        ctx.fillStyle = INK;
+        ctx.fillText(label, x + w / 2, 29);
+        this.hudButtons.push({ x, y: 14, w, h: 22, act });
+      };
+      mb(W - 112, `흔들림 ${g.settings.shake ? "켬" : "끔"}`, "shake", 70);
+      mb(W - 38, "II", "pause", 26);
+      this.drawMinimap(W - 232, 46, 22, 222);
+      this.drawCombo(W - 28, 300, 1);
+      const bg = ctx.createLinearGradient(0, H - 120, 0, H);
+      bg.addColorStop(0, "rgba(0,0,0,0)");
+      bg.addColorStop(1, "rgba(0,0,0,0.78)");
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, H - 120, W, 120);
+      ctx.textAlign = "center";
+      ctx.font = this.f(12);
+      ctx.fillStyle = "#e6d5a8";
+      ctx.fillText(g.hintText(), W / 2, H - 76);
+      this.drawCards();
       ctx.textAlign = "right";
       ctx.font = this.f(12);
       g.messages.forEach((m, i) => {
@@ -5323,9 +5893,9 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.globalAlpha = a;
         ctx.fillStyle = "rgba(0,0,0,0.5)";
         const w = ctx.measureText(m.text).width + 14;
-        ctx.fillRect(W - 12 - w, H - 100 - i * 20, w, 18);
+        ctx.fillRect(W - 12 - w, H - 122 - i * 20, w, 18);
         ctx.fillStyle = m.color;
-        ctx.fillText(m.text, W - 19, H - 87 - i * 20);
+        ctx.fillText(m.text, W - 19, H - 109 - i * 20);
       });
       ctx.globalAlpha = 1;
       if (g.paused) {
@@ -5336,14 +5906,14 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.textAlign = "left";
         ctx.fillStyle = "#7f7";
         ctx.font = "11px monospace";
-        ctx.fillText(`seed ${g.seed} state ${p.state} x ${p.x | 0} y ${p.y | 0} z ${p.z | 0} atk ${d.physAtk.toFixed(1)}/${d.magicAtk.toFixed(1)} def ${d.def} dodge ${(d.autoDodge * 100).toFixed(1)}%`, 20, H - 84);
+        ctx.fillText(`seed ${g.seed} state ${p.state}/${p.attackKind} x ${p.x | 0} y ${p.y | 0} z ${p.z | 0} atk ${d.physAtk.toFixed(1)}/${d.magicAtk.toFixed(1)} def ${d.def} hitStop ${g.hitStop.toFixed(2)}`, 20, H - 130);
       }
       ctx.restore();
     }
   };
 
   // src/game/Game.js
-  var C2 = BALANCE.combat;
+  var C3 = BALANCE.combat;
   var Game = class {
     constructor({ canvas: canvas2, bus: bus2, input: input2 }) {
       this.canvas = canvas2;
@@ -5363,6 +5933,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.messages = [];
       this.room = null;
       this.player = null;
+      this.hitStop = 0;
+      this.settings = { shake: true };
+      this.comboGrade = "";
+      this.comboBest = 0;
       this.bindEvents();
     }
     now() {
@@ -5619,7 +6193,30 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         this.room.cage = { x: width * 0.5, y: 380, npc: cell.npc, opened: !!cell.rescued };
         if (!cell.cleared) this.message(`감옥이다. 간수가 ${((_b = NPC_BY_ID[cell.npc]) == null ? void 0 : _b.name) ?? "누군가"}을(를) 가두고 있다!`, "#ff9c9c");
       }
+      if (!cell.fog && (t === "combat" || t === "elite" || t === "stairs") && !cell.propsBroken) {
+        const n = 1 + Math.floor(this.rng() * 3);
+        for (let i = 0; i < n; i++) this.room.props.push({
+          kind: this.rng() < 0.6 ? "pot" : "crate",
+          breakable: true,
+          broken: false,
+          x: 260 + this.rng() * (width - 520),
+          y: ROOM.floorTop + 20 + this.rng() * (ROOM.floorBottom - ROOM.floorTop - 40),
+          seed: this.rng()
+        });
+      }
       if (!this.room.hasCombat && t !== "boss") this.spawnDoors();
+    }
+    breakProp(o) {
+      o.broken = true;
+      const pool = chestPool(this.depth).filter((x) => ITEMS[x.id].type === "material");
+      const n = this.rng() < 0.7 ? 1 : 2;
+      for (let i = 0; i < n; i++) {
+        const id = this.pickFromPool(pool);
+        if (id) this.spawnPickup(id, o.x, o.y);
+      }
+      this.addFx({ kind: "debris", x: o.x, y: o.y, color: o.kind === "pot" ? "#c08a4a" : "#8a6a3a", life: 0.6 });
+      this.hitStop = Math.max(this.hitStop, 0.02);
+      if (this.room.props.every((p) => !p.breakable || p.broken)) this.room.cell.propsBroken = true;
     }
     /** 매 프레임 안전장치: 전투 없는 방인데 문이 없으면 생성 (예외 등으로 누락된 경우) */
     ensureDoors() {
@@ -5700,7 +6297,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     trapHit(p, dmg, fromX, knock, label) {
       if (p.state === "dead" || p.invulnerable || p.invuln > 0) return;
-      if (p.state === "dodge" && p.stateT <= C2.dodgeIFrames) {
+      if (p.state === "dodge" && p.stateT <= C3.dodgeIFrames) {
         this.stats.onAction("dodge", { weight: 0.5 });
         this.fxText(p.x, p.y - p.h - 20, "회피!", "#7CFC00", 16);
         return;
@@ -5929,9 +6526,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     // ── 스폰 헬퍼 ────────────────────────────────────────────
     spawnHitbox(h) {
+      var _a4;
       h.hitIds = /* @__PURE__ */ new Set();
       h.ttl = h.ttl ?? 0.1;
       h.age = 0;
+      if (h.owner === "enemy" && h.heavy == null) h.heavy = isHeavy((_a4 = h.enemy) == null ? void 0 : _a4.lastPattern);
       if (h.follow) this.updateFollow(h);
       else {
         const a = Math.min(h.x1, h.x2), b = Math.max(h.x1, h.x2);
@@ -5976,6 +6575,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.addFx({ kind: "lane", y, color, life: 0.3 });
     }
     shake(amp) {
+      if (!this.settings.shake) return;
       this.shakeAmp = Math.max(this.shakeAmp, amp);
       this.shakeT = 0.25;
     }
@@ -6041,7 +6641,15 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
             break;
           }
           const m = this.cmd.pressAttack(now, p.facing);
-          if (!m || !this.trySkill(m.id)) p.normalAttack(this);
+          if (m && this.trySkill(m.id)) break;
+          if (this.recentDir("cmdDown") && this.airborneEnemyNear(C3.slam.range) && p.slam()) break;
+          if (this.recentDir("cmdUp") && p.launcher()) break;
+          if (p.counterReady > 0 && p.counter()) break;
+          {
+            const ae = this.airborneEnemyNear(C3.airHit.range);
+            if (ae && (ae.juggleHits || 0) < C3.airHit.maxHits && p.airAttack()) break;
+          }
+          p.normalAttack(this);
           break;
         }
         case "magicAttack": {
@@ -6125,7 +6733,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (r.altar && !r.altar.claimed) add(r.altar, "퍼즐", () => this.openAltar(), 80);
       if (r.cage && !r.cage.opened && r.cleared) add(r.cage, "구출", () => this.openCage(), 80);
       const PL = { npc: "대화", storage: "창고", craft: "제작", campfire: "휴식" };
-      for (const o of r.props) add(o, PL[o.kind] || "사용", () => this.useProp(o), 70);
+      for (const o of r.props) {
+        if (o.breakable) continue;
+        add(o, PL[o.kind] || "사용", () => this.useProp(o), 70);
+      }
       if (!cands.length) return null;
       cands.sort((a, b) => a.d - b.d);
       return cands[0];
@@ -6133,6 +6744,77 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     interact() {
       const c = this.nearestInteractable();
       return c ? c.fn() : void 0;
+    }
+    // ── 공중 콤보 / HUD 텍스트 헬퍼 ─────────────────────────
+    /** ↑/↓ 를 방금(dirRecentMs) 눌렀거나 누르고 있는가 */
+    recentDir(action) {
+      if (this.input.isDown(action)) return true;
+      const t = this.input.downAt.get(action);
+      return t != null && performance.now() - t < C3.dirRecentMs;
+    }
+    /** 앞쪽 range 안의 떠 있는(launched) 적 중 가장 가까운 것 */
+    airborneEnemyNear(range) {
+      const p = this.player;
+      let best = null, bd = 1e9;
+      for (const e of this.room.enemies) {
+        if (e.state !== "launched" || e.z <= 0) continue;
+        const dx = (e.x - p.x) * p.facing;
+        if (dx < -30 || dx > range || Math.abs(e.y - p.y) > 60) continue;
+        if (dx < bd) {
+          bd = dx;
+          best = e;
+        }
+      }
+      return best;
+    }
+    updateComboGrade() {
+      const n = this.player.hitCombo;
+      let g = "";
+      for (const [min, letter] of C3.comboGrades) if (n >= min) {
+        g = letter;
+        break;
+      }
+      if (g && g !== this.comboGrade) {
+        this.comboGradeT = 0;
+      }
+      this.comboGrade = g;
+      this.comboBest = Math.max(this.comboBest, n);
+    }
+    /** 구간 이름 + 방 번호: "03 / 재의 회랑" */
+    roomTitle() {
+      const names = ["재의 회랑", "비 내리는 성벽", "지하 묘지", "늑대의 숲", "트롤 늪", "유령의 성", "가고일 첨탑", "뒤틀린 미궁", "지옥문", "용의 둥지"];
+      const fi = this.dungeon.floorIndex, cell = this.room.cell;
+      const area = cell.type === "sanctuary" ? "안식처" : cell.type === "boss" ? "보스의 방" : cell.fog ? "짙은 안개" : names[Math.min(9, Math.floor(fi / 10))];
+      const idx = this.dungeon.floor.cells.filter((c) => c.entered).length;
+      return { no: String(idx).padStart(2, "0"), area, floor: fi + 1 };
+    }
+    objectiveText() {
+      var _a4;
+      const r = this.room, alive = r.enemies.filter((e) => e.state !== "dead").length;
+      if (r.sealed) return "봉인 제단의 퍼즐을 풀어라";
+      if (alive) {
+        const boss = r.enemies.find((e) => e.boss && e.state !== "dead");
+        if (boss) return `${boss.def.name}을(를) 쓰러뜨려라`;
+        const w = ((_a4 = r.waves) == null ? void 0 : _a4.length) || 0;
+        return `남은 적 ${alive}${w ? ` · 다음 무리 ${w}` : ""}`;
+      }
+      if (r.cell.type === "sanctuary") return "쉬고, 창고를 쓰고, 계단으로";
+      if (r.stairs) return "계단으로 내려가라";
+      if (r.portal) return "귀환 포탈 — 던전을 떠날 수 있다";
+      if (r.altar && !r.altar.claimed) return "제단의 퍼즐 (선택)";
+      if (r.doors.length) return `출구 ${r.doors.length} · 문 앞에서 J/F`;
+      return "…";
+    }
+    /** 하단 힌트 줄: 지금 할 수 있는 가장 좋은 행동 */
+    hintText() {
+      const p = this.player, r = this.room;
+      if (p.counterReady > 0) return "J — 강한 반격!";
+      if (r.enemies.some((e) => e.state === "windup" && e.pending && isHeavy(e.pending) && Math.abs(e.x - p.x) < 260)) return "붉은 예고 — L 로 흘려라!";
+      if (this.airborneEnemyNear(C3.slam.range)) return "J 공중 추가타 · ↓+J 내려찍기";
+      const ca = this.contextAction();
+      if (ca) return `${ca.label} — J 또는 F`;
+      if (r.enemies.some((e) => e.state !== "dead")) return "↑+J 로 띄우고 J 로 이어가라 · 방향 조합 + J/K 커맨드";
+      return "WASD 이동 · 미니맵 클릭 = 지도";
     }
     /** 상황 버튼: 살아 있는 적이 없고 근처에 대상이 있으면 공격 버튼이 그 행동이 된다 (B2-대안) */
     contextAction() {
@@ -6218,19 +6900,30 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       var _a4;
       const d = this.player.derived, type = h.dmgType || "physical";
       const atk = type === "magic" ? d.magicAtk : type === "hybrid" ? (d.physAtk + d.magicAtk) / 2 : d.physAtk;
-      let dmg = atk * (h.mul || 1) * (1 + C2.skillLevelDmgStep * ((h.level || 1) - 1));
+      let dmg = atk * (h.mul || 1) * (1 + C3.skillLevelDmgStep * ((h.level || 1) - 1));
       if (h.skill) dmg *= this.skills.awakenMul(h.skill);
       if ((_a4 = h.tag) == null ? void 0 : _a4.startsWith("combo")) dmg *= d.comboDmgMul;
       dmg = Math.max(1, Math.round(dmg - e.def.def * 0.5));
-      const res = e.takeHit({ dmg, fromX: this.player.x, knock: h.knock || 0, launch: h.launch || 0, stun: h.stun ?? 0.25, freeze: h.freeze || 0 });
+      const kind = h.kind || (h.skill ? "skill" : "normal");
+      if (kind === "counter" || kind === "slam") dmg = Math.round(dmg * (1 + Math.min(0.5, this.player.hitCombo * 0.01)));
+      const res = e.takeHit({ dmg, fromX: this.player.x, knock: h.knock || 0, launch: h.launch || 0, stun: h.stun ?? 0.25, freeze: h.freeze || 0, lift: h.lift || 0 });
       if (res.ignored) return;
       if (res.blocked) {
         this.fxText(e.x, e.y - e.h - 10 - e.z, `방패 ${e.shieldHits}`, "#9ad0ff", 14);
         return;
       }
-      this.fxText(e.x, e.y - e.h - 10 - e.z, dmg, type === "magic" ? "#9ad0ff" : type === "hybrid" ? "#ff9cf0" : "#fff", dmg >= 60 ? 22 : 17);
+      const big = kind === "counter" || kind === "slam" || kind === "heavy" || dmg >= 60;
+      const col = kind === "counter" ? "#ff6a5a" : kind === "slam" ? "#ffb347" : type === "magic" ? "#9ad0ff" : type === "hybrid" ? "#ff9cf0" : big ? "#ffe08a" : "#fff";
+      this.addFx({ kind: "dmg", x: e.x + (this.rng() - 0.5) * 20, y: e.y - e.h - 6 - e.z, text: String(dmg), color: col, size: big ? 28 : 18, life: big ? 0.9 : 0.7, vy: -60 });
+      const HS = C3.hitStop;
+      this.hitStop = Math.max(this.hitStop, kind === "counter" ? HS.counter : kind === "slam" || kind === "heavy" || kind === "launcher" ? HS.heavy : HS.normal);
+      if (kind === "launcher") {
+        this.shake(3);
+        this.fxText(e.x, e.y - e.h - 30 - e.z, "띄움!", "#ffe0a0", 15);
+      }
       this.player.hitCombo++;
       this.player.hitComboTimer = 1.5;
+      this.updateComboGrade();
       if (type !== "magic") {
         const w = e.boss ? 0.85 : e.elite ? 0.6 : 0.35;
         this.stats.onAction("physicalHit", { weight: w });
@@ -6248,7 +6941,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         this.fxText(p.x, p.y - p.h - 20 - p.z, "무효", "#9ad0ff", 14);
         return;
       }
-      if (p.state === "dodge" && p.stateT <= C2.dodgeIFrames) {
+      if (p.state === "dodge" && p.stateT <= C3.dodgeIFrames) {
         this.stats.onAction("dodge", { weight: tier >= 3 ? 0.9 : tier === 2 ? 0.7 : 0.55 });
         this.fxText(p.x, p.y - p.h - 20 - p.z, "회피!", "#7CFC00", 16);
         this.runProcs("onDodge", { enemy: src.enemy });
@@ -6263,8 +6956,20 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       let dmg = Math.max(1, Math.round(atk - p.derived.def * 0.7));
       const fromX = src.fromX ?? (src.x1 + src.x2) / 2;
       const facingAttacker = fromX === p.x || Math.sign(fromX - p.x) === p.facing;
+      if (p.state === "guard" && facingAttacker && src.heavy && p.stateT <= C3.parry.window) {
+        p.counterReady = C3.parry.counterTime;
+        p.invuln = 0.4;
+        p.hitFlash = 0;
+        if (src.enemy) src.enemy.parried(C3.parry.enemyStun, p.x);
+        this.hitStop = Math.max(this.hitStop, C3.hitStop.counter);
+        this.addFx({ kind: "parry", x: p.x + p.facing * 24, y: p.y - 40 - p.z, life: 0.35 });
+        this.fxText(p.x, p.y - p.h - 26 - p.z, "흘리기!", "#ffd700", 22);
+        this.stats.onAction("blocked", { weight: 0.9 });
+        this.shake(4);
+        return;
+      }
       if (p.state === "guard" && facingAttacker) {
-        dmg = Math.max(1, Math.round(dmg * C2.guardDamageMul));
+        dmg = Math.max(1, Math.round(dmg * C3.guardDamageMul));
         this.stats.onAction("blocked", { weight: tier >= 3 ? 0.7 : 0.5 });
         this.fxText(p.x, p.y - p.h - 20, "방어!", "#ffd700", 16);
         p.hp -= dmg;
@@ -6387,7 +7092,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     fireProc(pr, ctx) {
       const e = pr.effect, p = this.player, d = p.derived;
       const EL_COLOR = { ice: "#8fd8ff", fire: "#ff6a3d", lightning: "#ffe66d", arcane: "#c77dff", void: "#6a4aff", shadow: "#555" };
-      const lvMul = e.skillRef && this.skills.isLearned(e.skillRef) ? 1 + C2.skillLevelDmgStep * (this.skills.effLevel(e.skillRef) - 1) : 1;
+      const lvMul = e.skillRef && this.skills.isLearned(e.skillRef) ? 1 + C3.skillLevelDmgStep * (this.skills.effLevel(e.skillRef) - 1) : 1;
       switch (e.kind) {
         case "bolt":
           this.spawnProjectile({ owner: "player", x: p.x + p.facing * 24, y: p.y, z: 34 + p.z, vx: p.facing * 520, mul: e.mul * lvMul, level: 1, dmgType: "magic", color: EL_COLOR[e.element], radius: 11, pierce: 0, proc: true, element: e.element });
@@ -6576,6 +7281,16 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     // ── 루프 ────────────────────────────────────────────────
     update(dt) {
       if (this.phase !== "play" || this.paused) return;
+      if (this.hitStop > 0) {
+        this.hitStop -= dt;
+        for (const f of this.fx) f.t += dt * 0.5;
+        this.fx = this.fx.filter((f) => f.t < f.life);
+        if (this.shakeT > 0) {
+          this.shakeT -= dt;
+          if (this.shakeT <= 0) this.shakeAmp = 0;
+        }
+        return;
+      }
       this.time += dt;
       const r = this.room, p = this.player;
       for (const t of this.timers) t.t -= dt;
@@ -6599,6 +7314,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
             if (e.state === "dead" || h.hitIds.has(e.id) || !this.overlaps(h, e)) continue;
             h.hitIds.add(e.id);
             this.playerHitsEnemy(h, e);
+          }
+          for (const o of r.props) {
+            if (!o.breakable || o.broken || h.hitIds.has(o) || !(o.x >= h.x1 - 16 && o.x <= h.x2 + 16 && Math.abs(o.y - h.y) <= (h.laneTol || 36))) continue;
+            h.hitIds.add(o);
+            this.breakProp(o);
           }
         } else if (!h.hitIds.has("p") && this.overlaps(h, p)) {
           h.hitIds.add("p");
@@ -6892,6 +7612,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         <p class="sub">행동 기반 성장 · 커맨드 콤보 · 미로 던전 — 2D 횡스크롤 액션 로그라이크 프로토타입</p>
         <div class="controls">
           <div><b>이동</b> W A S D (화살표도 가능)</div><div><b>공격</b> J (연타 3콤보)</div><div><b>마법 공격</b> K (마력탄, MP 소모)</div>
+          <div><b>올려치기</b> ↑+J → 공중 J 추가타 → <b>내려찍기</b> ↓+J</div><div><b>흘리기</b> 붉은 예고(!) 직전 L → J 강한 반격</div>
           <div><b>방어</b> L (유지)</div><div><b>회피</b> Shift</div><div><b>점프</b> Space</div>
           <div><b>물리 스킬</b> 방향 조합 + J (예: S D J)</div><div><b>마법 스킬</b> 방향 조합 + K (예: S D K)</div><div><b>단축 스킬</b> 1 2 3 4</div>
           <div><b>상호작용</b> F</div><div><b>물약</b> Q</div><div><b>창</b> T 스킬 · I 가방 · M 지도</div>
@@ -6997,7 +7718,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         { icon: "🌫️", title: "재의 마을", body: `산 아래 작은 마을에 어느 날 <b>저주 안개</b>가 내려앉았다.<br>안개는 사람들을 삼켜 산속 던전 깊은 곳으로 끌고 갔고, 남은 이들은 마을을 떠났다.<br><br>당신은 남기로 했다. 검과 마법, 그리고 몸으로 익힌 것만 믿고 안개의 근원을 향해 내려간다.` },
         { icon: "🏔️", title: "99층 아래, 안개의 심장", body: `던전은 <b>99층</b>이다. 층마다 미로처럼 방이 얽혀 있고, 매번 모양이 바뀐다.<br>10층마다 <b>보스</b>가 길을 막고, 그 뒤에는 <b>안식처</b>가 있어 쉬고, 창고를 쓰고, 기록을 남길 수 있다.<br><br>층 어딘가에는 <b>갇힌 주민</b>이 있다. 구출하면 안식처 모닥불 곁에 모여든다.<br>가장 깊은 곳의 <b>안개의 심장</b>을 부수는 것이 이 여정의 끝이다.` },
         { icon: "⚔️", title: "행동이 곧 성장", body: `이 게임에는 레벨업 버튼이 없다.<br>· <b>때리면 힘</b>이, <b>피하면 민첩</b>이, <b>맞거나 막으면 체력</b>이, <b>마법을 쓰면 마력</b>이 조금씩 오른다.<br>· 스탯이 쌓이면 당신의 싸움 방식대로 <b>직업</b>이 정해지고 궁극기가 열린다.<br>· 방 3개를 돌파할 때마다 <b>스킬 포인트</b>를 얻어 스킬을 고른다(저축 최대 3, 총 40회).<br>· 몬스터는 <b>재료와 레시피</b>를 떨어뜨린다. 장비는 오직 <b>제작</b>으로만 얻는다. 무기에는 저절로 발동하는 힘이 깃들어 있다.<br>· <b>짙은 안개 방</b>에는 몬스터 대신 <b>함정</b>과 <b>봉인 제단</b>이 있다. 퍼즐(그림 맞추기·불 끄기·미니 스도쿠)을 풀면 <b>상급 재료와 레시피</b>를 얻는다(선택).` },
-        { icon: touch2 ? "📱" : "⌨️", title: "조작", body: touch2 ? `왼쪽 화면 <b>아무 곳이나 누르면 조이스틱</b>이 생긴다. 오른쪽은 <b>공격·방어·회피·점프·물약</b>.<br><b>스킬 1~4</b> 버튼으로 스킬을 쓰고, <b>마법</b> 버튼을 켜면 공격 버튼이 마법(마력탄·마법 커맨드)이 된다.<br>조이스틱을 톡톡 튕긴 뒤 공격을 누르면 커맨드 스킬도 나간다(예: ↓ → 공격).<br>적이 없을 때 문·상자·제단·사람 앞에 서면 <b>공격 버튼이 입장·열기·퍼즐·대화</b>로 바뀐다. 위쪽 <b>≡ 메뉴</b>에 스킬·가방·지도, <b>미니맵</b>을 누르면 지도.` : `<b>W A S D</b> 이동(화살표도 가능) · <b>J</b> 공격(연타 콤보) · <b>K</b> 마법 공격(마력탄) · <b>L</b> 방어 · <b>Shift</b> 회피 · <b>Space</b> 점프<br>물리 스킬: 방향 조합 + <b>J</b> (예: S D J = ↓→ 강타). 마법 스킬: 방향 조합 + <b>K</b> (예: S D K = 파이어볼).<br><b>→(D)는 바라보는 방향</b>이다. 단축 스킬 1~4.<br><b>F</b> 상호작용 · <b>Q</b> 물약 · <b>T</b> 스킬창 · <b>I</b> 가방 · <b>M</b> 지도` }
+        { icon: touch2 ? "📱" : "⌨️", title: "조작", body: touch2 ? `왼쪽 화면 <b>아무 곳이나 누르면 조이스틱</b>이 생긴다. 오른쪽은 <b>공격·방어·회피·점프·물약</b>.<br><b>스킬 1~4</b> 버튼으로 스킬을 쓰고, <b>마법</b> 버튼을 켜면 공격 버튼이 마법(마력탄·마법 커맨드)이 된다.<br>조이스틱을 톡톡 튕긴 뒤 공격을 누르면 커맨드 스킬도 나간다(예: ↓ → 공격).<br>적이 없을 때 문·상자·제단·사람 앞에 서면 <b>공격 버튼이 입장·열기·퍼즐·대화</b>로 바뀐다. 위쪽 <b>≡ 메뉴</b>에 스킬·가방·지도, <b>미니맵</b>을 누르면 지도.` : `<b>W A S D</b> 이동(화살표도 가능) · <b>J</b> 공격(연타 콤보) · <b>K</b> 마법 공격(마력탄) · <b>L</b> 방어 · <b>Shift</b> 회피 · <b>Space</b> 점프<br><b>↑+J 올려치기</b>로 적을 띄우고 <b>J</b>로 공중에서 이어 때린 뒤 <b>↓+J 내려찍기</b>. 적의 <b>붉은 예고(!)</b> 직전에 <b>L</b>을 누르면 흘리기 — 다음 J가 강한 반격.<br>물리 스킬: 방향 조합 + <b>J</b> (예: S D J = ↓→ 강타). 마법 스킬: 방향 조합 + <b>K</b>. <b>→(D)는 바라보는 방향</b>. 단축 스킬 1~4.<br><b>F</b> 상호작용 · <b>Q</b> 물약 · <b>T</b> 스킬창 · <b>I</b> 가방 · <b>M</b> 지도` }
       ];
       const p = pages[Math.min(page, pages.length - 1)], last2 = page >= pages.length - 1, st = thenStart ? "1" : "0";
       this.show("intro", `<div class="win intro">
@@ -7195,7 +7916,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.save();
       ctx.translate(110, 206);
       ctx.scale(2.4, 2.4);
-      g.renderer.paintPlayer(ctx, 0, 0, 1, p.gender, { weapon: g.inv.equipped.weapon ? (_a4 = ITEMS[g.inv.equipped.weapon]) == null ? void 0 : _a4.visual : null, armor: g.inv.equipped.armor ? (_b = ITEMS[g.inv.equipped.armor]) == null ? void 0 : _b.visual : null, t: g.time });
+      g.renderer.paintPlayer(ctx, 0, 0, 1, p.gender, { weapon: g.inv.equipped.weapon ? (_a4 = ITEMS[g.inv.equipped.weapon]) == null ? void 0 : _a4.visual : null, armor: g.inv.equipped.armor ? (_b = ITEMS[g.inv.equipped.armor]) == null ? void 0 : _b.visual : null, accessory: g.inv.equipped.accessory ? { color: "#ffd700" } : null, t: g.time });
       ctx.restore();
     }
     statText(stats = {}) {
@@ -7535,13 +8256,21 @@ ${n}`;
     }
   });
   canvas.addEventListener("pointerdown", (e) => {
-    const r = game.renderer.minimapRect;
-    if (!r || game.phase !== "play") return;
+    if (game.phase !== "play") return;
     const b = canvas.getBoundingClientRect(), sx = CANVAS.width / b.width, sy = CANVAS.height / b.height;
     const x = (e.clientX - b.left) * sx, y = (e.clientY - b.top) * sy;
-    if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+    const inside = (r) => r && x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    if (inside(game.renderer.minimapRect)) {
       e.preventDefault();
       ui.toggle("map");
+      return;
+    }
+    for (const btn of game.renderer.hudButtons || []) {
+      if (!inside(btn)) continue;
+      e.preventDefault();
+      if (btn.act === "shake") game.settings.shake = !game.settings.shake;
+      else if (btn.act === "pause") ui.isAnyOpen() ? ui.closeAll() : ui.toggle("map");
+      return;
     }
   });
   window.G = game;
