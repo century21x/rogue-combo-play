@@ -344,8 +344,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       // 공중의 적에게 J: 추가타(살짝 더 띄움), 플레이어는 짧게 점프
       slam: { mul: 2.2, radius: 130, knock: 280, jumpVel: 380, fallVel: -900, range: 130 },
       // ↓+J: 내려찍기 + 착지 충격파
-      parry: { window: 0.18, counterMul: 2.6, counterTime: 1.8, enemyStun: 1.4, range: 120 },
-      // L 타이밍 흘리기 → 다음 J 강한 반격
+      parry: { window: 0.5, counterMul: 2.6, counterTime: 1.8, enemyStun: 1.4, range: 120 },
+      // 붉은 ! 를 보고 L 을 누른 뒤 0.5초 안에 맞으면 흘리기 → 다음 J 강한 반격
       hitStop: { normal: 0.035, heavy: 0.07, counter: 0.12, kill: 0.05 },
       // 적중 시 정지(초)
       comboGrades: [[40, "S"], [24, "A"], [12, "B"], [5, "C"]],
@@ -3515,7 +3515,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           return free || this.state === "attack" && this.attackKind === "normal";
         // 올려치기/공중타/반격: 일반 콤보에서 캔슬 가능
         case "slam":
-          return (free || this.state === "attack") && this.z === 0;
+          return free || this.state === "attack";
+        // 공중(추가타 직후)에서도 가능 → 바로 급강하
         case "dodge":
           return (free || this.state === "attack" || this.state === "guard") && this.dodgeCd <= 0;
         case "jump":
@@ -3571,9 +3572,14 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (!this.canAct("slam")) return false;
       this.skill = null;
       this.setState("slam");
-      this.slamFell = false;
       this.attackSpawned = false;
-      this.vz = C.slam.jumpVel;
+      if (this.z > 0) {
+        this.slamFell = true;
+        this.vz = C.slam.fallVel;
+      } else {
+        this.slamFell = false;
+        this.vz = C.slam.jumpVel;
+      }
       return true;
     }
     startDodge() {
@@ -3962,10 +3968,12 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
 
   // src/entities/Enemy.js
   var G = BALANCE.combat.gravity;
-  function isHeavy(p) {
+  function isHeavy(p, e = null) {
     if (!p) return false;
     if (p.heavy != null) return !!p.heavy;
-    return ["charge", "slam", "breath", "leap", "explode"].includes(p.kind) || p.kind === "melee" && (p.mul || 1) >= 1.3;
+    if (["charge", "slam", "breath", "leap", "explode"].includes(p.kind)) return true;
+    if (p.kind !== "melee") return false;
+    return (p.mul || 1) >= 1.2 || !!(e && (e.boss || e.elite));
   }
   var NEXT_ID = 1;
   var Enemy = class {
@@ -4366,6 +4374,36 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
   };
 
+  // src/data/themes.js
+  var THEMES = [
+    { id: "corridor", name: "재의 회랑", sky: ["#0d1018", "#1a1e2c"], wall: "#1e2438", floor: ["#2e3040", "#15161f"], accent: "#d6b05a", motif: "arch", particles: "ash" },
+    { id: "rampart", name: "비 내리는 성벽", sky: ["#0b1220", "#1c2a44"], wall: "#243048", floor: ["#2a3244", "#141a26"], accent: "#c84a3a", motif: "battlement", particles: "rain" },
+    { id: "crypt", name: "지하 묘지", sky: ["#0a0c10", "#181a22"], wall: "#1c1e28", floor: ["#26262e", "#111116"], accent: "#7ab0a0", motif: "crypt", particles: "mist" },
+    { id: "forest", name: "늑대의 숲", sky: ["#0a1410", "#14261c"], wall: "#12201a", floor: ["#22301f", "#0f160f"], accent: "#7ab060", motif: "forest", particles: "leaf" },
+    { id: "swamp", name: "트롤 늪", sky: ["#0c120c", "#1c2a1a"], wall: "#182418", floor: ["#26301e", "#101610"], accent: "#a0c050", motif: "swamp", particles: "mist" },
+    { id: "ghost", name: "유령의 성", sky: ["#0c0c1c", "#1e1c38"], wall: "#26244a", floor: ["#2c2a44", "#141222"], accent: "#a090ff", motif: "castle", particles: "spirit" },
+    { id: "spire", name: "가고일 첨탑", sky: ["#101018", "#2a2a40"], wall: "#303040", floor: ["#38384a", "#1a1a24"], accent: "#c0c0d8", motif: "spire", particles: "snow" },
+    { id: "maze", name: "뒤틀린 미궁", sky: ["#120c18", "#221630"], wall: "#2a1c3c", floor: ["#302640", "#160f20"], accent: "#c77dff", motif: "maze", particles: "ash" },
+    { id: "hell", name: "지옥문", sky: ["#1a0806", "#3a1410"], wall: "#3a1a14", floor: ["#3c2018", "#1a0c08"], accent: "#ff6a3d", motif: "hell", particles: "ember" },
+    { id: "lair", name: "용의 둥지", sky: ["#160c06", "#2e1a0c"], wall: "#3a2410", floor: ["#3c2a14", "#1a1008"], accent: "#ffd700", motif: "lair", particles: "ember" }
+  ];
+  var themeFor = (floorIdx) => THEMES[Math.max(0, Math.min(THEMES.length - 1, Math.floor(floorIdx / 10)))];
+
+  // src/game/Sprites.js
+  var SPRITES = /* @__PURE__ */ new Map();
+  function drawSprite(ctx, key, x, y, facing = 1, alpha = 1) {
+    const s = SPRITES.get(key);
+    if (!s || !s.ready) return false;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    ctx.translate(x, y);
+    if (facing < 0) ctx.scale(-1, 1);
+    const w = s.w * s.scale, h = s.h * s.scale;
+    ctx.drawImage(s.img, -w / 2, -s.feetY * s.scale, w, h);
+    ctx.restore();
+    return true;
+  }
+
   // src/game/Renderer.js
   var W = CANVAS.width;
   var H = CANVAS.height;
@@ -4374,6 +4412,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     H = CANVAS.height;
   }
   var C2 = BALANCE.combat;
+  var SPRITE_ONLY = (e) => SPRITES.has(e.def.id);
   var FONT = '"Malgun Gothic","Apple SD Gothic Neo","Noto Sans KR",sans-serif';
   var Renderer = class {
     constructor(canvas2, game2) {
@@ -4410,6 +4449,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (g.debug) this.drawHitboxes();
       this.drawFx();
       ctx.restore();
+      this.drawParticles();
       if (g.room.fog) this.drawFog();
       this.drawHUD();
     }
@@ -4444,56 +4484,24 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.fillStyle = gr;
       ctx.fillRect(0, 0, W, H);
     }
+    /** 방 배경: 구간 테마(themes.js) — 하늘 → 모티프(원경/중경) → 벽 띠 → 바닥 → 비네트 */
     drawRoom() {
-      const ctx = this.ctx, g = this.game, r = g.room, cam = g.camX;
-      const boss = r.cell.type === "boss", esc2 = r.cell.type === "escape", sanct = r.cell.type === "sanctuary";
-      const sky = ctx.createLinearGradient(0, 0, 0, ROOM.floorTop);
-      sky.addColorStop(0, boss ? "#1e0c10" : esc2 ? "#0c1c20" : sanct ? "#1c160e" : "#0d1018");
-      sky.addColorStop(1, boss ? "#2e161c" : esc2 ? "#163034" : sanct ? "#2c2416" : "#1a1e2c");
+      const ctx = this.ctx, g = this.game, r = g.room, cam = g.camX, t = g.time;
+      const cell = r.cell, boss = cell.type === "boss", esc2 = cell.type === "escape", sanct = cell.type === "sanctuary";
+      const th = themeFor(g.dungeon.floorIndex), top = ROOM.floorTop;
+      const sky = ctx.createLinearGradient(0, 0, 0, top);
+      sky.addColorStop(0, boss ? "#1e0c10" : esc2 ? "#0c1c20" : sanct ? "#1c160e" : th.sky[0]);
+      sky.addColorStop(1, boss ? "#2e161c" : esc2 ? "#163034" : sanct ? "#2c2416" : th.sky[1]);
       ctx.fillStyle = sky;
-      ctx.fillRect(cam, 0, W, ROOM.floorTop);
-      const top = ROOM.floorTop;
-      for (let i = -1; i < 12; i++) {
-        const wx = i * 200 + cam * 0.4, aw = 120, ah = top - 70;
-        ctx.fillStyle = boss ? "rgba(80,30,40,0.45)" : "rgba(30,36,56,0.9)";
-        ctx.beginPath();
-        ctx.moveTo(wx, top);
-        ctx.lineTo(wx, 70 + aw * 0.5);
-        ctx.arc(wx + aw / 2, 70 + aw * 0.5, aw / 2, Math.PI, 0);
-        ctx.lineTo(wx + aw, top);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = "rgba(255,255,255,0.06)";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.fillStyle = "rgba(0,0,0,0.35)";
-        ctx.fillRect(wx + 12, 96, aw - 24, ah - 30);
-        ctx.fillStyle = "rgba(255,255,255,0.035)";
-        for (let b = 0; b < 3; b++) ctx.fillRect(wx + 24 + b * 32, 96, 4, ah - 30);
-        ctx.fillStyle = "rgba(255,255,255,0.05)";
-        ctx.fillRect(wx + aw, 60, 26, top - 60);
-        ctx.fillStyle = "rgba(0,0,0,0.25)";
-        ctx.fillRect(wx + aw + 18, 60, 8, top - 60);
-        if (i % 2 === 0) {
-          const fx = wx + aw / 2, fy = 250 + Math.sin(g.time * 6 + i) * 2;
-          ctx.fillStyle = `rgba(255,${170 + Math.sin(g.time * 8 + i) * 40 | 0},80,0.9)`;
-          ctx.beginPath();
-          ctx.ellipse(fx, fy, 4, 7, 0, 0, Math.PI * 2);
-          ctx.fill();
-          const glow = ctx.createRadialGradient(fx, fy, 3, fx, fy, 80);
-          glow.addColorStop(0, "rgba(255,180,80,0.2)");
-          glow.addColorStop(1, "rgba(255,180,80,0)");
-          ctx.fillStyle = glow;
-          ctx.fillRect(fx - 80, fy - 80, 160, 160);
-        }
-      }
+      ctx.fillRect(cam, 0, W, top);
+      this.drawMotif(th, cam, top, t, boss);
       ctx.fillStyle = "rgba(0,0,0,0.35)";
       ctx.fillRect(cam, top - 26, W, 26);
-      ctx.fillStyle = "rgba(214,176,90,0.35)";
+      ctx.fillStyle = this.rgba(th.accent, 0.35);
       ctx.fillRect(cam, top - 4, W, 2);
       const fl = ctx.createLinearGradient(0, top - 20, 0, H);
-      fl.addColorStop(0, boss ? "#3a2222" : "#2e3040");
-      fl.addColorStop(1, boss ? "#1e1010" : "#15161f");
+      fl.addColorStop(0, boss ? "#3a2222" : th.floor[0]);
+      fl.addColorStop(1, boss ? "#1e1010" : th.floor[1]);
       ctx.fillStyle = fl;
       ctx.fillRect(cam - 50, top - 20, W + 100, H - top + 20);
       ctx.strokeStyle = "rgba(255,255,255,0.055)";
@@ -4512,6 +4520,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           ctx.stroke();
         }
       }
+      this.drawFloorDeco(th, cam, top, t);
       const vg = ctx.createLinearGradient(0, ROOM.floorBottom - 40, 0, H);
       vg.addColorStop(0, "rgba(0,0,0,0)");
       vg.addColorStop(1, "rgba(0,0,0,0.55)");
@@ -4520,6 +4529,541 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.fillStyle = "rgba(0,0,0,0.55)";
       ctx.fillRect(0, 0, ROOM.wallLeft, H);
       ctx.fillRect(r.width, 0, 60, H);
+    }
+    rgba(hex, a) {
+      const n = parseInt(hex.slice(1), 16);
+      return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`;
+    }
+    /** 촛불/횃불 한 점 (불꽃 + 글로우) */
+    flame(x, y, t, seed, color = "255,180,80") {
+      const ctx = this.ctx, fy = y + Math.sin(t * 6 + seed) * 2;
+      ctx.fillStyle = `rgba(${color},0.9)`;
+      ctx.beginPath();
+      ctx.ellipse(x, fy, 4, 7 + Math.sin(t * 9 + seed) * 1.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const glow = ctx.createRadialGradient(x, fy, 3, x, fy, 80);
+      glow.addColorStop(0, `rgba(${color},0.22)`);
+      glow.addColorStop(1, `rgba(${color},0)`);
+      ctx.fillStyle = glow;
+      ctx.fillRect(x - 80, fy - 80, 160, 160);
+    }
+    /** 구간 모티프: 원경(패럴랙스 0.2) + 중경(0.4). 모두 카메라 기준으로 무한 반복 */
+    drawMotif(th, cam, top, t, boss) {
+      const ctx = this.ctx, far = cam * 0.2, mid = cam * 0.4, m = th.motif;
+      const rep = (step2, off, fn) => {
+        const start = Math.floor((cam - off) / step2) - 1;
+        for (let i = start; i <= start + Math.ceil(W / step2) + 2; i++) fn(i * step2 + off, i);
+      };
+      const moon = (x, y, rr, col) => {
+        const g = ctx.createRadialGradient(x, y, rr * 0.6, x, y, rr * 3);
+        g.addColorStop(0, col.replace("A", "0.35"));
+        g.addColorStop(1, col.replace("A", "0"));
+        ctx.fillStyle = g;
+        ctx.fillRect(x - rr * 3, y - rr * 3, rr * 6, rr * 6);
+        ctx.fillStyle = col.replace("A", "0.9");
+        ctx.beginPath();
+        ctx.arc(x, y, rr, 0, Math.PI * 2);
+        ctx.fill();
+      };
+      switch (m) {
+        case "battlement": {
+          moon(cam + W * 0.72, 80, 34, "rgba(220,225,240,A)");
+          rep(320, far, (x) => {
+            ctx.fillStyle = "rgba(14,20,36,0.9)";
+            ctx.fillRect(x, 130, 90, top - 130);
+            for (let k = 0; k < 4; k++) ctx.fillRect(x + k * 24, 116, 14, 16);
+            ctx.fillStyle = "rgba(255,220,150,0.18)";
+            ctx.fillRect(x + 38, 170, 12, 18);
+          });
+          ctx.fillStyle = th.wall;
+          ctx.fillRect(cam, 200, W, top - 200);
+          ctx.fillStyle = "rgba(0,0,0,0.18)";
+          for (let y = 224; y < top; y += 28) {
+            ctx.fillRect(cam, y, W, 2);
+          }
+          rep(64, mid, (x, i) => {
+            ctx.fillStyle = th.wall;
+            ctx.fillRect(x, 176, 34, 26);
+            ctx.fillStyle = "rgba(0,0,0,0.25)";
+            ctx.fillRect(x + (i % 2 ? 10 : 80), 240, 30, 3);
+          });
+          rep(300, mid + 120, (x, i) => {
+            ctx.strokeStyle = "#9a9aa8";
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x, 176);
+            ctx.lineTo(x, 100);
+            ctx.stroke();
+            const w = Math.sin(t * 3 + i) * 6;
+            ctx.fillStyle = th.accent;
+            ctx.beginPath();
+            ctx.moveTo(x, 102);
+            ctx.lineTo(x + 46 + w, 116);
+            ctx.lineTo(x, 132);
+            ctx.closePath();
+            ctx.fill();
+          });
+          break;
+        }
+        case "crypt": {
+          rep(180, far, (x, i) => {
+            ctx.fillStyle = "rgba(20,22,32,0.9)";
+            ctx.fillRect(x, 90, 30, top - 90);
+            ctx.fillRect(x - 8, 90, 46, 12);
+          });
+          ctx.fillStyle = th.wall;
+          ctx.fillRect(cam, 190, W, top - 190);
+          rep(150, mid, (x, i) => {
+            const h = 60 + i % 3 * 14;
+            ctx.fillStyle = "#2c2e3a";
+            ctx.beginPath();
+            ctx.roundRect(x, top - 26 - h, 44, h + 6, [22, 22, 0, 0]);
+            ctx.fill();
+            ctx.strokeStyle = "rgba(0,0,0,0.35)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x + 22, top - 18 - h);
+            ctx.lineTo(x + 22, top - 40);
+            ctx.moveTo(x + 10, top - 8 - h);
+            ctx.lineTo(x + 34, top - 8 - h);
+            ctx.stroke();
+            if (i % 2 === 0) this.flame(x + 70, 260, t, i, "120,220,180");
+          });
+          break;
+        }
+        case "forest": {
+          const tree = (x, y, hgt, wid, col) => {
+            ctx.fillStyle = col;
+            ctx.fillRect(x - wid * 0.08, y - hgt * 0.3, wid * 0.16, hgt * 0.3);
+            for (let k = 0; k < 3; k++) {
+              const ty = y - hgt * 0.25 - k * hgt * 0.24, tw = wid * (1 - k * 0.22);
+              ctx.beginPath();
+              ctx.moveTo(x - tw / 2, ty);
+              ctx.lineTo(x, ty - hgt * 0.34);
+              ctx.lineTo(x + tw / 2, ty);
+              ctx.closePath();
+              ctx.fill();
+            }
+          };
+          moon(cam + W * 0.3, 70, 26, "rgba(200,220,255,A)");
+          rep(110, far, (x, i) => tree(x, top - 20, 150 + i % 3 * 30, 70, "rgba(10,22,16,0.9)"));
+          rep(170, mid, (x, i) => tree(x, top + 6, 210 + i % 2 * 40, 100, th.wall));
+          ctx.fillStyle = "rgba(0,0,0,0.35)";
+          ctx.fillRect(cam, top - 40, W, 40);
+          break;
+        }
+        case "swamp": {
+          rep(200, far, (x, i) => {
+            ctx.strokeStyle = "rgba(12,20,12,0.95)";
+            ctx.lineWidth = 12;
+            ctx.beginPath();
+            ctx.moveTo(x, top);
+            ctx.lineTo(x + 6, 120);
+            ctx.stroke();
+            ctx.lineWidth = 5;
+            ctx.beginPath();
+            ctx.moveTo(x + 4, 170);
+            ctx.lineTo(x - 40, 130);
+            ctx.moveTo(x + 5, 200);
+            ctx.lineTo(x + 50, 150);
+            ctx.stroke();
+          });
+          rep(260, mid + 90, (x, i) => {
+            ctx.strokeStyle = th.wall;
+            ctx.lineWidth = 16;
+            ctx.beginPath();
+            ctx.moveTo(x, top);
+            ctx.lineTo(x - 8, 90);
+            ctx.stroke();
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.moveTo(x - 6, 150);
+            ctx.lineTo(x - 70, 110);
+            ctx.moveTo(x - 4, 190);
+            ctx.lineTo(x + 60, 140);
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(110,140,70,0.6)";
+            ctx.lineWidth = 2;
+            for (let k = 0; k < 4; k++) {
+              const mx = x - 60 + k * 30, sw = Math.sin(t * 1.5 + k + i) * 4;
+              ctx.beginPath();
+              ctx.moveTo(mx, 120 + k * 8);
+              ctx.quadraticCurveTo(mx + sw, 160 + k * 10, mx + sw * 0.5, 200 + k * 12);
+              ctx.stroke();
+            }
+          });
+          const fog = ctx.createLinearGradient(0, top - 80, 0, top);
+          fog.addColorStop(0, "rgba(120,150,110,0)");
+          fog.addColorStop(1, "rgba(120,150,110,0.28)");
+          ctx.fillStyle = fog;
+          ctx.fillRect(cam, top - 80, W, 80);
+          break;
+        }
+        case "castle": {
+          ctx.fillStyle = th.wall;
+          ctx.fillRect(cam, 60, W, top - 60);
+          rep(230, mid, (x, i) => {
+            const wx = x, wy = 90, ww = 70, wh = 200;
+            const g = ctx.createLinearGradient(0, wy, 0, wy + wh);
+            g.addColorStop(0, "rgba(160,170,255,0.55)");
+            g.addColorStop(1, "rgba(120,130,220,0.15)");
+            ctx.fillStyle = g;
+            ctx.beginPath();
+            ctx.moveTo(wx, wy + ww / 2);
+            ctx.arc(wx + ww / 2, wy + ww / 2, ww / 2, Math.PI, 0);
+            ctx.lineTo(wx + ww, wy + wh);
+            ctx.lineTo(wx, wy + wh);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = "rgba(20,20,40,0.9)";
+            ctx.fillRect(wx + ww / 2 - 3, wy, 6, wh);
+            ctx.fillRect(wx, wy + wh * 0.45, ww, 5);
+            ctx.fillStyle = "rgba(160,170,255,0.06)";
+            ctx.beginPath();
+            ctx.moveTo(wx, wy + wh);
+            ctx.lineTo(wx + ww, wy + wh);
+            ctx.lineTo(wx + ww + 60, top + 60);
+            ctx.lineTo(wx - 60, top + 60);
+            ctx.closePath();
+            ctx.fill();
+            if (i % 2) {
+              const cy = 150 + Math.sin(t * 2 + i) * 6;
+              this.flame(wx + ww + 60, cy, t, i, "190,180,255");
+            }
+          });
+          break;
+        }
+        case "spire": {
+          rep(420, far * 0.6, (x, i) => {
+            ctx.fillStyle = "rgba(200,205,225,0.08)";
+            ctx.beginPath();
+            ctx.ellipse(x + t * 6 % 420, 90 + i % 2 * 40, 120, 26, 0, 0, Math.PI * 2);
+            ctx.fill();
+          });
+          ctx.fillStyle = th.wall;
+          ctx.fillRect(cam, 210, W, top - 210);
+          ctx.fillStyle = "rgba(0,0,0,0.25)";
+          ctx.fillRect(cam, 206, W, 8);
+          rep(260, mid, (x, i) => {
+            ctx.fillStyle = "#4a4a5c";
+            ctx.fillRect(x, 186, 70, 22);
+            ctx.fillStyle = "#3a3a4a";
+            ctx.beginPath();
+            ctx.ellipse(x + 35, 170, 22, 16, 0, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x + 46, 150, 10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 14, 166);
+            ctx.lineTo(x - 10, 140);
+            ctx.lineTo(x + 22, 152);
+            ctx.closePath();
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(x + 56, 166);
+            ctx.lineTo(x + 80, 140);
+            ctx.lineTo(x + 48, 152);
+            ctx.closePath();
+            ctx.fill();
+            ctx.fillStyle = `rgba(255,80,60,${0.5 + Math.sin(t * 3 + i) * 0.4})`;
+            ctx.fillRect(x + 42, 148, 3, 3);
+            ctx.fillRect(x + 49, 148, 3, 3);
+          });
+          break;
+        }
+        case "maze": {
+          ctx.fillStyle = th.wall;
+          ctx.fillRect(cam, 40, W, top - 40);
+          ctx.strokeStyle = "rgba(0,0,0,0.25)";
+          ctx.lineWidth = 1;
+          for (let y = 40, k = 0; y < top; y += 22, k++) {
+            ctx.beginPath();
+            ctx.moveTo(cam, y);
+            ctx.lineTo(cam + W, y);
+            ctx.stroke();
+            rep(60, mid + k % 2 * 30, (x) => {
+              ctx.beginPath();
+              ctx.moveTo(x, y);
+              ctx.lineTo(x, y + 22);
+              ctx.stroke();
+            });
+          }
+          rep(240, mid + 60, (x, i) => {
+            const pulse = 0.5 + Math.sin(t * 2 + i) * 0.5;
+            ctx.strokeStyle = this.rgba(th.accent, 0.35 + pulse * 0.5);
+            ctx.lineWidth = 3;
+            ctx.shadowColor = th.accent;
+            ctx.shadowBlur = 10 + pulse * 10;
+            ctx.beginPath();
+            ctx.arc(x, 200, 26, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            for (let k = 0; k < 3; k++) {
+              const a = k / 3 * Math.PI * 2 + t * 0.5;
+              ctx.moveTo(x + Math.cos(a) * 26, 200 + Math.sin(a) * 26);
+              ctx.lineTo(x + Math.cos(a + 2.1) * 26, 200 + Math.sin(a + 2.1) * 26);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+          });
+          break;
+        }
+        case "hell": {
+          ctx.fillStyle = th.wall;
+          ctx.fillRect(cam, 40, W, top - 40);
+          rep(200, mid, (x, i) => {
+            const pulse = 0.6 + Math.sin(t * 4 + i) * 0.4;
+            ctx.strokeStyle = `rgba(255,${110 + pulse * 60 | 0},40,${0.6 + pulse * 0.4})`;
+            ctx.lineWidth = 3;
+            ctx.shadowColor = "#ff6a20";
+            ctx.shadowBlur = 16;
+            ctx.beginPath();
+            ctx.moveTo(x, top - 26);
+            ctx.lineTo(x + 18, top - 90);
+            ctx.lineTo(x + 4, top - 140);
+            ctx.lineTo(x + 30, top - 210);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x + 18, top - 90);
+            ctx.lineTo(x + 50, top - 110);
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+            if (i % 2) {
+              ctx.strokeStyle = "#555";
+              ctx.lineWidth = 4;
+              ctx.beginPath();
+              ctx.moveTo(x + 120, 40);
+              ctx.lineTo(x + 124 + Math.sin(t + i) * 6, 200);
+              ctx.stroke();
+              ctx.fillStyle = "#666";
+              for (let k = 0; k < 8; k++) ctx.fillRect(x + 116 + Math.sin(t + i) * 6 * (k / 8), 40 + k * 20, 10, 8);
+            }
+          });
+          const gl = ctx.createLinearGradient(0, top - 60, 0, top);
+          gl.addColorStop(0, "rgba(255,90,30,0)");
+          gl.addColorStop(1, "rgba(255,90,30,0.25)");
+          ctx.fillStyle = gl;
+          ctx.fillRect(cam, top - 60, W, 60);
+          break;
+        }
+        case "lair": {
+          ctx.fillStyle = th.wall;
+          ctx.fillRect(cam, 40, W, top - 40);
+          for (let y = 60, k = 0; y < top - 20; y += 26, k++) rep(40, mid + k % 2 * 20, (x) => {
+            ctx.strokeStyle = "rgba(0,0,0,0.3)";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(x, y, 20, Math.PI, 0);
+            ctx.stroke();
+            ctx.strokeStyle = "rgba(255,215,0,0.08)";
+            ctx.beginPath();
+            ctx.arc(x, y - 3, 18, Math.PI * 1.2, Math.PI * 1.8);
+            ctx.stroke();
+          });
+          rep(300, mid + 40, (x, i) => {
+            ctx.fillStyle = "#c8a030";
+            ctx.beginPath();
+            ctx.ellipse(x + 60, top - 20, 90, 34, 0, Math.PI, 0);
+            ctx.fill();
+            ctx.fillStyle = "#ffd700";
+            for (let k = 0; k < 9; k++) ctx.fillRect(x + 10 + k * 12 + k % 3 * 4, top - 30 - k % 4 * 6, 6, 4);
+            ctx.fillStyle = "#e8e0c8";
+            ctx.fillRect(x - 40, top - 32, 34, 6);
+            ctx.beginPath();
+            ctx.arc(x - 44, top - 29, 6, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(x - 2, top - 29, 6, 0, Math.PI * 2);
+            ctx.fill();
+            this.flame(x + 150, 230, t, i, "255,160,60");
+          });
+          break;
+        }
+        default: {
+          rep(200, mid, (x, i) => {
+            const aw = 120, ah = top - 70;
+            ctx.fillStyle = boss ? "rgba(80,30,40,0.45)" : "rgba(30,36,56,0.9)";
+            ctx.beginPath();
+            ctx.moveTo(x, top);
+            ctx.lineTo(x, 70 + aw * 0.5);
+            ctx.arc(x + aw / 2, 70 + aw * 0.5, aw / 2, Math.PI, 0);
+            ctx.lineTo(x + aw, top);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = "rgba(255,255,255,0.06)";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            ctx.fillStyle = "rgba(0,0,0,0.35)";
+            ctx.fillRect(x + 12, 96, aw - 24, ah - 30);
+            ctx.fillStyle = "rgba(255,255,255,0.035)";
+            for (let b = 0; b < 3; b++) ctx.fillRect(x + 24 + b * 32, 96, 4, ah - 30);
+            ctx.fillStyle = "rgba(255,255,255,0.05)";
+            ctx.fillRect(x + aw, 60, 26, top - 60);
+            ctx.fillStyle = "rgba(0,0,0,0.25)";
+            ctx.fillRect(x + aw + 18, 60, 8, top - 60);
+            if (i % 2 === 0) this.flame(x + aw / 2, 250, t, i);
+          });
+        }
+      }
+    }
+    /** 바닥 장식: 늪 물웅덩이 · 지옥 용암 균열 · 숲 풀 */
+    drawFloorDeco(th, cam, top, t) {
+      const ctx = this.ctx, r = this.game.room;
+      if (th.motif === "swamp") {
+        for (let x = 120; x < r.width; x += 340) {
+          const y = top + 60 + x % 3 * 40;
+          const g = ctx.createRadialGradient(x, y, 4, x, y, 90);
+          g.addColorStop(0, "rgba(90,140,110,0.35)");
+          g.addColorStop(1, "rgba(90,140,110,0)");
+          ctx.fillStyle = g;
+          ctx.beginPath();
+          ctx.ellipse(x, y, 90, 26, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(160,200,170,0.2)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.ellipse(x, y, 50 + Math.sin(t + x) * 6, 14, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (th.motif === "hell") {
+        ctx.strokeStyle = `rgba(255,120,40,${0.35 + Math.sin(t * 3) * 0.15})`;
+        ctx.lineWidth = 2;
+        ctx.shadowColor = "#ff6a20";
+        ctx.shadowBlur = 8;
+        for (let x = 80; x < r.width; x += 260) {
+          ctx.beginPath();
+          ctx.moveTo(x, top + 30);
+          ctx.lineTo(x + 40, top + 70);
+          ctx.lineTo(x + 20, top + 120);
+          ctx.lineTo(x + 70, top + 150);
+          ctx.stroke();
+        }
+        ctx.shadowBlur = 0;
+      } else if (th.motif === "forest") {
+        ctx.strokeStyle = "rgba(120,170,90,0.35)";
+        ctx.lineWidth = 2;
+        for (let x = 40; x < r.width; x += 55) {
+          const y = top + 20 + x * 7 % 120;
+          ctx.beginPath();
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + 3 + Math.sin(t * 2 + x) * 2, y - 12);
+          ctx.moveTo(x + 6, y);
+          ctx.lineTo(x + 8, y - 9);
+          ctx.stroke();
+        }
+      }
+    }
+    /** 화면 파티클: 테마별 (ash·rain·mist·leaf·spirit·snow·ember). 화면 좌표, 월드와 무관 */
+    drawParticles() {
+      const ctx = this.ctx, g = this.game, th = themeFor(g.dungeon.floorIndex), kind = th.particles;
+      const now = performance.now();
+      const dt = Math.min(0.05, (now - (this.pLast || now)) / 1e3);
+      this.pLast = now;
+      if (!this.pKind || this.pKind !== kind) {
+        this.pKind = kind;
+        this.pList = [];
+        const n = { rain: 90, ash: 40, mist: 6, leaf: 22, spirit: 14, snow: 50, ember: 36 }[kind] || 0;
+        for (let i = 0; i < n; i++) this.pList.push({ x: Math.random() * W, y: Math.random() * H, s: 0.5 + Math.random(), a: Math.random() * Math.PI * 2, r: Math.random() });
+      }
+      const P2 = this.pList;
+      if (!P2.length) return;
+      ctx.save();
+      for (const p of P2) {
+        p.a += dt;
+        switch (kind) {
+          case "rain":
+            p.y += (700 + p.s * 300) * dt;
+            p.x -= 120 * dt;
+            if (p.y > H) {
+              p.y = -20;
+              p.x = Math.random() * (W + 200);
+            }
+            ctx.strokeStyle = `rgba(180,200,240,${0.18 + p.s * 0.2})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(p.x, p.y);
+            ctx.lineTo(p.x - 4, p.y + 14 + p.s * 8);
+            ctx.stroke();
+            break;
+          case "ash":
+            p.y += (18 + p.s * 14) * dt;
+            p.x += Math.sin(p.a) * 10 * dt;
+            if (p.y > H) {
+              p.y = -10;
+              p.x = Math.random() * W;
+            }
+            ctx.fillStyle = `rgba(200,200,210,${0.25 + p.r * 0.3})`;
+            ctx.fillRect(p.x, p.y, 2 + p.s, 2 + p.s);
+            break;
+          case "snow":
+            p.y += (30 + p.s * 30) * dt;
+            p.x += Math.sin(p.a * 0.8) * 16 * dt;
+            if (p.y > H) {
+              p.y = -10;
+              p.x = Math.random() * W;
+            }
+            ctx.fillStyle = `rgba(240,240,255,${0.4 + p.r * 0.4})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 1 + p.s, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+          case "ember":
+            p.y -= (30 + p.s * 40) * dt;
+            p.x += Math.sin(p.a * 2) * 20 * dt;
+            if (p.y < -10) {
+              p.y = H + 10;
+              p.x = Math.random() * W;
+            }
+            ctx.fillStyle = `rgba(255,${120 + p.r * 100 | 0},50,${0.4 + Math.sin(p.a * 6) * 0.3})`;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, 1.2 + p.s, 0, Math.PI * 2);
+            ctx.fill();
+            break;
+          case "leaf":
+            p.y += (40 + p.s * 30) * dt;
+            p.x += (20 + Math.sin(p.a) * 40) * dt;
+            if (p.y > H) {
+              p.y = -10;
+              p.x = Math.random() * W - 100;
+            }
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(p.a * 2);
+            ctx.fillStyle = p.r > 0.5 ? "rgba(120,160,70,0.6)" : "rgba(150,110,60,0.6)";
+            ctx.fillRect(-4, -2, 8, 4);
+            ctx.restore();
+            break;
+          case "spirit":
+            p.y -= (10 + p.s * 10) * dt;
+            p.x += Math.sin(p.a * 0.7) * 12 * dt;
+            if (p.y < -20) {
+              p.y = H + 10;
+              p.x = Math.random() * W;
+            }
+            {
+              const rr = 3 + p.s * 3, gg = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, rr * 3);
+              gg.addColorStop(0, `rgba(170,190,255,${0.35 + Math.sin(p.a * 2) * 0.15})`);
+              gg.addColorStop(1, "rgba(170,190,255,0)");
+              ctx.fillStyle = gg;
+              ctx.fillRect(p.x - rr * 3, p.y - rr * 3, rr * 6, rr * 6);
+            }
+            break;
+          case "mist":
+            p.x += (12 + p.s * 10) * dt;
+            if (p.x > W + 300) p.x = -300;
+            {
+              const yy = H * 0.55 + p.r * H * 0.35, gg = ctx.createLinearGradient(p.x, 0, p.x + 300, 0);
+              gg.addColorStop(0, "rgba(200,215,205,0)");
+              gg.addColorStop(0.5, `rgba(200,215,205,${0.08 + p.s * 0.06})`);
+              gg.addColorStop(1, "rgba(200,215,205,0)");
+              ctx.fillStyle = gg;
+              ctx.fillRect(p.x, yy, 300, 40 + p.s * 30);
+            }
+            break;
+        }
+      }
+      ctx.restore();
     }
     doorLabel(d, x, yName, near, yPrompt) {
       const ctx = this.ctx;
@@ -4932,6 +5476,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.globalAlpha = p.state === "dodge" ? 0.55 : 1;
       }
       const inv = this.game.inv;
+      if (drawSprite(ctx, "player", p.x, y, f, p.state === "dodge" ? 0.55 : 1)) {
+        ctx.restore();
+        return;
+      }
       this.paintPlayer(ctx, x, y, f, p.gender, {
         flash: p.hitFlash > 0,
         legSwing: p.state === "move" ? Math.sin(this.game.time * 14) * 6 : 0,
@@ -5135,6 +5683,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.fillStyle = mg;
         ctx.fillRect(x - 120, y - e.h / 2 - 120, 240, 240);
       }
+      if (drawSprite(ctx, d.id, e.x, y, e.facing, e.hitFlash > 0 ? 0.6 : 1)) {
+        this.drawEnemyOverlay(e, x, y, t);
+        ctx.restore();
+        return;
+      }
       let col = d.color;
       if (e.hitFlash > 0) col = "#fff";
       else if (e.freezeT > 0) col = "#8fd8ff";
@@ -5264,7 +5817,13 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           ctx.fillRect(x + f * e.w * 0.4, ry + e.h * 0.35, 8, e.h * 0.25);
         }
       }
-      if (d.shape !== "undead") {
+      this.drawEnemyOverlay(e, x, y, t);
+      ctx.restore();
+    }
+    /** 이름·HP·보스 테두리·방패·텔레그래프 (스프라이트/벡터 공통) */
+    drawEnemyOverlay(e, x, y, t) {
+      const ctx = this.ctx, d = e.def, rx = x - e.w / 2, ry = y - e.h, f = e.facing;
+      if (!SPRITE_ONLY(e) && d.shape !== "undead") {
         ctx.fillStyle = e.state === "windup" ? "#ff2020" : "#111";
         const ey = d.shape === "blob" ? y - e.h * 0.55 : d.shape === "beast" ? ry + e.h * 0.2 : d.shape === "dragon" ? y - e.h * 0.85 : ry + e.h * 0.15;
         const ex = d.shape === "dragon" ? x + f * e.w * 0.55 : x + f * e.w * 0.12;
@@ -5292,7 +5851,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       if (e.state === "windup" && e.pending) {
         const p = e.pending;
-        if (isHeavy(p)) {
+        const heavy = isHeavy(p, e);
+        if (heavy) {
           const k = Math.min(1, e.stateT / Math.max(0.05, p.windup)), pulse = 0.5 + Math.sin(t * 26) * 0.5;
           ctx.save();
           ctx.strokeStyle = `rgba(255,${60 + pulse * 40 | 0},50,${0.5 + pulse * 0.5})`;
@@ -5303,13 +5863,16 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           ctx.ellipse(x, y - e.h / 2, e.w * 0.65 + 6, e.h * 0.6 + 6, 0, 0, Math.PI * 2);
           ctx.stroke();
           ctx.shadowBlur = 0;
-          ctx.fillStyle = "#ff3a2a";
-          ctx.font = this.f(22, true);
           ctx.textAlign = "center";
-          ctx.fillText("!", x, ry - 24);
+          ctx.fillStyle = "#ff3a2a";
+          ctx.font = this.f(24, true);
+          ctx.fillText("!", x, ry - 30);
+          ctx.fillStyle = "#ffd700";
+          ctx.font = this.f(11, true);
+          ctx.fillText("흘리기 L", x, ry - 50);
           ctx.restore();
         }
-        ctx.fillStyle = isHeavy(p) ? "rgba(255,40,40,0.26)" : "rgba(255,60,60,0.18)";
+        ctx.fillStyle = heavy ? "rgba(255,40,40,0.26)" : "rgba(255,60,60,0.18)";
         if (p.kind === "slam" || p.kind === "explode") {
           ctx.beginPath();
           ctx.ellipse(x, e.y, p.radius, p.radius * 0.35, 0, 0, Math.PI * 2);
@@ -5333,7 +5896,6 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.fillStyle = e.hp / e.maxHp > 0.4 ? "#ff5555" : "#ff9933";
         ctx.fillRect(x - 22, ry - 10, 44 * Math.max(0, e.hp / e.maxHp), 5);
       }
-      ctx.restore();
     }
     drawZones() {
       const ctx = this.ctx, t = this.game.time;
@@ -5810,8 +6372,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const cards = [
         { key: "J", name: "연속 베기", sub: "3타 마무리", hot: p.state === "attack" && p.attackKind === "normal" },
         { key: "↑J", name: "올려치기", sub: "적을 띄운다", hot: p.state === "attack" && p.attackKind === "launcher" },
-        { key: "↓J", name: "내려찍기", sub: "공중의 적 · 충격파", hot: p.state === "slam", ready: !!g.airborneEnemyNear(C2.slam.range) },
-        { key: "L", name: "흘리기", sub: p.counterReady > 0 ? "J 강한 반격!" : "붉은 예고를 흘려라", hot: p.counterReady > 0 }
+        { key: "↓J", name: "내려찍기", sub: "뛰어올라 충격파", hot: p.state === "slam", ready: !!g.airborneEnemyNear(C2.slam.range) },
+        { key: "L", name: "흘리기", sub: p.counterReady > 0 ? "J 강한 반격!" : "적 머리 위 ! 뜨면 L", hot: p.counterReady > 0 }
       ];
       for (let i = 0; i < 4; i++) {
         const id = g.skills.quickslots[i], def = id && getSkill(id), cd = id ? g.skills.cooldownLeft(id) : 0;
@@ -6614,7 +7176,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       h.hitIds = /* @__PURE__ */ new Set();
       h.ttl = h.ttl ?? 0.1;
       h.age = 0;
-      if (h.owner === "enemy" && h.heavy == null) h.heavy = isHeavy((_a4 = h.enemy) == null ? void 0 : _a4.lastPattern);
+      if (h.owner === "enemy" && h.heavy == null) h.heavy = isHeavy((_a4 = h.enemy) == null ? void 0 : _a4.lastPattern, h.enemy);
       if (h.follow) this.updateFollow(h);
       else {
         const a = Math.min(h.x1, h.x2), b = Math.max(h.x1, h.x2);
@@ -6727,7 +7289,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           }
           const m = this.cmd.pressAttack(now, p.facing);
           if (m && this.trySkill(m.id)) break;
-          if (this.recentDir("cmdDown") && this.airborneEnemyNear(C3.slam.range) && p.slam()) break;
+          if (this.recentDir("cmdDown") && p.slam()) break;
           if (this.recentDir("cmdUp") && p.launcher()) break;
           if (p.counterReady > 0 && p.counter()) break;
           {
@@ -6867,9 +7429,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     /** 구간 이름 + 방 번호: "03 / 재의 회랑" */
     roomTitle() {
-      const names = ["재의 회랑", "비 내리는 성벽", "지하 묘지", "늑대의 숲", "트롤 늪", "유령의 성", "가고일 첨탑", "뒤틀린 미궁", "지옥문", "용의 둥지"];
       const fi = this.dungeon.floorIndex, cell = this.room.cell;
-      const area = cell.type === "sanctuary" ? "안식처" : cell.type === "boss" ? "보스의 방" : cell.fog ? "짙은 안개" : names[Math.min(9, Math.floor(fi / 10))];
+      const area = cell.type === "sanctuary" ? "안식처" : cell.type === "boss" ? "보스의 방" : cell.fog ? "짙은 안개" : themeFor(fi).name;
       const idx = this.dungeon.floor.cells.filter((c) => c.entered).length;
       return { no: String(idx).padStart(2, "0"), area, floor: fi + 1 };
     }
@@ -6894,7 +7455,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     hintText() {
       const p = this.player, r = this.room;
       if (p.counterReady > 0) return "J — 강한 반격!";
-      if (r.enemies.some((e) => e.state === "windup" && e.pending && isHeavy(e.pending) && Math.abs(e.x - p.x) < 260)) return "붉은 예고 — L 로 흘려라!";
+      if (r.enemies.some((e) => e.state === "windup" && e.pending && isHeavy(e.pending, e) && Math.abs(e.x - p.x) < 260)) return "붉은 ! — 지금 L 을 눌러 흘려라!";
       if (this.airborneEnemyNear(C3.slam.range)) return "J 공중 추가타 · ↓+J 내려찍기";
       const ca = this.contextAction();
       if (ca) return `${ca.label} — J`;
