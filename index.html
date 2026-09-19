@@ -5582,19 +5582,45 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.fillStyle = "#222";
       ctx.fillRect(x + f * 5 - 1, y - 62, 3, 3);
       const w = o.weapon || { shape: "sword", color: "#c8c8d8", bare: true };
-      const hx = x + f * 12, hy = y - 38;
+      const hx = x + f * 18, hy = y - 30;
       const ang = o.swing != null ? o.swingUp ? 1 - o.swing * 2.4 : -1.2 + o.swing * 2.2 : -1.1;
       const len = { dagger: 22, sword: 34, greatsword: 50, staff: 46, mace: 32, scythe: 44 }[w.shape] || 32;
       const ex = hx + f * Math.cos(ang) * len, ey = hy + Math.sin(ang) * len;
       ctx.lineCap = "round";
-      if (w.bare) {
-        const punch = o.swing != null ? Math.sin(Math.min(1, o.swing) * Math.PI) * 16 : 0;
-        ctx.fillStyle = flash ? "#fff" : skin;
+      const armCol = flash ? "#fff" : o.armor ? body : skin, handCol = flash ? "#fff" : skin;
+      ctx.lineCap = "round";
+      ctx.lineWidth = 6;
+      ctx.strokeStyle = armCol;
+      ctx.beginPath();
+      ctx.moveTo(x - f * 10, y - 46);
+      ctx.lineTo(x - f * 15, y - 24);
+      ctx.stroke();
+      ctx.fillStyle = handCol;
+      ctx.beginPath();
+      ctx.arc(x - f * 15, y - 22, 4.5, 0, Math.PI * 2);
+      ctx.fill();
+      if (!w.bare) {
+        ctx.strokeStyle = armCol;
         ctx.beginPath();
-        ctx.arc(hx + f * (4 + punch), hy + 6, 5, 0, Math.PI * 2);
+        ctx.moveTo(x + f * 10, y - 46);
+        ctx.lineTo(hx, hy);
+        ctx.stroke();
+        ctx.fillStyle = handCol;
+        ctx.beginPath();
+        ctx.arc(hx, hy, 4.5, 0, Math.PI * 2);
         ctx.fill();
+      }
+      if (w.bare) {
+        const punch = o.swing != null ? Math.sin(Math.min(1, o.swing) * Math.PI) : 0;
+        const ex2 = x + f * (14 + punch * 26), ey2 = y - 24 - punch * 14;
+        ctx.strokeStyle = armCol;
         ctx.beginPath();
-        ctx.arc(x - f * 12, hy + 8, 4.5, 0, Math.PI * 2);
+        ctx.moveTo(x + f * 10, y - 46);
+        ctx.lineTo(ex2, ey2);
+        ctx.stroke();
+        ctx.fillStyle = handCol;
+        ctx.beginPath();
+        ctx.arc(ex2, ey2, 5, 0, Math.PI * 2);
         ctx.fill();
       } else if (w.shape === "staff") {
         ctx.strokeStyle = w.color;
