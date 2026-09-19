@@ -215,7 +215,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     <div id="ui"></div>
     <div id="rotate-hint">📱 가로로 돌려주세요</div>
   </div>
-  <p class="footer">v0.1.0 (2026-09-19) · 방향키 이동 · J 공격 · K 방어 · L 회피 · Space 점프 · 방향키 조합+J 물리 스킬(→=앞) · Ctrl+방향키+J 마법 스킬 · 1~4 단축 · F 상호작용 · Q 물약 · T 스킬 · I 가방 · M 지도 · F3 디버그 · <button id="touch-toggle" class="linkbtn">📱 터치 조작 표시</button></p>
+  <p class="footer">v0.1.0 (2026-09-19) · WASD 이동(화살표 가능) · J 공격 · K 방어 · L 회피 · Space 점프 · 방향 조합+J 물리 스킬(→=앞) · Shift+방향+J 마법 스킬 · 1~4 단축 · F 상호작용 · Q 물약 · T 스킬 · I 가방 · M 지도 · F3 디버그 · <button id="touch-toggle" class="linkbtn">📱 터치 조작 표시</button></p>
   <script>
 (() => {
   // src/core/EventBus.js
@@ -293,11 +293,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     wave: { base: 4, perFloorDiv: 3, maxPerRoom: 10, wave2From: 5, wave3From: 20, affix1From: 19, affix2From: 59 }
   };
   var DEFAULT_BINDINGS = {
-    moveUp: "ArrowUp",
-    moveDown: "ArrowDown",
-    moveLeft: "ArrowLeft",
-    moveRight: "ArrowRight",
-    // 이동과 커맨드 겸용 (DNF 식)
+    moveUp: ["KeyW", "ArrowUp"],
+    moveDown: ["KeyS", "ArrowDown"],
+    moveLeft: ["KeyA", "ArrowLeft"],
+    moveRight: ["KeyD", "ArrowRight"],
+    // WASD (화살표도 됨), 이동과 커맨드 겸용
     attack: "KeyJ",
     guard: "KeyK",
     dodge: "KeyL",
@@ -306,11 +306,12 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     skill2: "Digit2",
     skill3: "Digit3",
     skill4: "Digit4",
-    cmdUp: "ArrowUp",
-    cmdDown: "ArrowDown",
-    cmdLeft: "ArrowLeft",
-    cmdRight: "ArrowRight",
-    magicMod: ["ControlLeft", "ControlRight"],
+    cmdUp: ["KeyW", "ArrowUp"],
+    cmdDown: ["KeyS", "ArrowDown"],
+    cmdLeft: ["KeyA", "ArrowLeft"],
+    cmdRight: ["KeyD", "ArrowRight"],
+    magicMod: ["ShiftLeft", "ShiftRight"],
+    // Shift (Ctrl 은 Ctrl+W 가 탭을 닫으므로 제외)
     interact: "KeyF",
     usePotion: "KeyQ",
     skillWindow: "KeyT",
@@ -4926,7 +4927,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.fillText("커맨드", 20, H - 54);
       ctx.font = this.f(20, true);
       ctx.fillStyle = g.cmd.modifier ? "#c77dff" : "#ffd27f";
-      ctx.fillText((g.cmd.modifier ? "Ctrl+" : "") + (g.cmd.bufferString(g.now()) || "—"), 72, H - 50);
+      ctx.fillText((g.cmd.modifier ? "Shift+" : "") + (g.cmd.bufferString(g.now()) || "—"), 72, H - 50);
       ctx.font = this.f(11);
       ctx.fillStyle = "#ccc";
       const potion = g.inv.count("hp_potion");
@@ -5072,7 +5073,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.player.mp = this.player.derived.maxMp;
       this.inv.add("hp_potion", 2);
       this.enterRoom(this.dungeon.currentCell, null);
-      this.message("던전 진입. 방향키 이동 · J 공격 · K 방어 · L 회피 · Space 점프 · 방향키 조합+J 커맨드 · M 지도", "#cfd8ff");
+      this.message("던전 진입. WASD 이동 · J 공격 · K 방어 · L 회피 · Space 점프 · 방향 조합+J 커맨드(Shift=마법) · M 지도", "#cfd8ff");
     }
     /** 체크포인트 직렬화 (안식처에서 호출) */
     serialize() {
@@ -6440,9 +6441,9 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         <p class="small">${true ? "v0.1.0 (2026-09-19)" : "dev"} · 프로토타입 테스트 빌드</p>
         <p class="sub">행동 기반 성장 · 커맨드 콤보 · 미로 던전 — 2D 횡스크롤 액션 로그라이크 프로토타입</p>
         <div class="controls">
-          <div><b>이동</b> ↑ ↓ ← →</div><div><b>공격</b> J (연타 3콤보)</div><div><b>방어</b> K (유지)</div>
+          <div><b>이동</b> W A S D (화살표도 가능)</div><div><b>공격</b> J (연타 3콤보)</div><div><b>방어</b> K (유지)</div>
           <div><b>회피</b> L</div><div><b>점프</b> Space</div><div><b>물리 스킬</b> 방향키 조합 + J</div>
-          <div><b>마법 스킬</b> Ctrl 유지 + 방향키 조합 + J</div><div><b>단축 스킬</b> 1 2 3 4</div>
+          <div><b>마법 스킬</b> Shift 유지 + 방향키 조합 + J</div><div><b>단축 스킬</b> 1 2 3 4</div>
           <div><b>상호작용</b> F</div><div><b>물약</b> Q</div><div><b>창</b> T 스킬 · I 가방 · M 지도</div>
         </div>
         <p class="note">스탯은 행동으로만 오릅니다 — 때리면 힘, 피하면 민첩, 맞거나 막으면 체력, 마법을 쓰면 마력.<br>커맨드의 <b>→</b>는 <b>바라보는 방향(앞)</b>입니다. 왼쪽을 볼 때 ↓←+J 는 오른쪽을 볼 때 ↓→+J 와 같은 스킬입니다.</p>
@@ -6536,7 +6537,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         { icon: "🌫️", title: "재의 마을", body: `산 아래 작은 마을에 어느 날 <b>저주 안개</b>가 내려앉았다.<br>안개는 사람들을 삼켜 산속 던전 깊은 곳으로 끌고 갔고, 남은 이들은 마을을 떠났다.<br><br>당신은 남기로 했다. 검과 마법, 그리고 몸으로 익힌 것만 믿고 안개의 근원을 향해 내려간다.` },
         { icon: "🏔️", title: "99층 아래, 안개의 심장", body: `던전은 <b>99층</b>이다. 층마다 미로처럼 방이 얽혀 있고, 매번 모양이 바뀐다.<br>10층마다 <b>보스</b>가 길을 막고, 그 뒤에는 <b>안식처</b>가 있어 쉬고, 창고를 쓰고, 기록을 남길 수 있다.<br><br>층 어딘가에는 <b>갇힌 주민</b>이 있다. 구출하면 안식처 모닥불 곁에 모여든다.<br>가장 깊은 곳의 <b>안개의 심장</b>을 부수는 것이 이 여정의 끝이다.` },
         { icon: "⚔️", title: "행동이 곧 성장", body: `이 게임에는 레벨업 버튼이 없다.<br>· <b>때리면 힘</b>이, <b>피하면 민첩</b>이, <b>맞거나 막으면 체력</b>이, <b>마법을 쓰면 마력</b>이 조금씩 오른다.<br>· 스탯이 쌓이면 당신의 싸움 방식대로 <b>직업</b>이 정해지고 궁극기가 열린다.<br>· 방 3개를 돌파할 때마다 <b>스킬 포인트</b>를 얻어 스킬을 고른다(저축 최대 3, 총 40회).<br>· 몬스터는 <b>재료와 레시피</b>를 떨어뜨린다. 장비는 오직 <b>제작</b>으로만 얻는다. 무기에는 저절로 발동하는 힘이 깃들어 있다.<br>· <b>짙은 안개 방</b>에는 몬스터 대신 <b>함정</b>과 <b>봉인 제단</b>이 있다. 그림 퍼즐을 풀면 <b>상급 재료와 레시피</b>를 얻는다(선택).` },
-        { icon: touch2 ? "📱" : "⌨️", title: "조작", body: touch2 ? `왼쪽 <b>방향패드</b>로 이동, 오른쪽 <b>공격·방어·회피·점프</b>.<br><b>스킬 1~4</b> 버튼으로 스킬을 쓰고, <b>마법</b> 버튼을 켜면 마법 스킬로 바뀐다.<br>방향패드를 톡톡 누른 뒤 공격을 누르면 커맨드 스킬도 나간다(예: ↓ → 공격).<br>위쪽의 <b>F</b>로 문·상자·제단·사람과 상호작용, <b>Q</b>로 물약.` : `<b>방향키</b> 이동 · <b>J</b> 공격(연타 콤보) · <b>K</b> 방어 · <b>L</b> 회피 · <b>Space</b> 점프<br>커맨드 스킬: 방향키 조합 + J (예: ↓→ J). <b>→는 바라보는 방향</b>이다.<br>마법 스킬: <b>Ctrl</b>을 누른 채 방향키 조합 + J. 단축 스킬 1~4.<br><b>F</b> 상호작용 · <b>Q</b> 물약 · <b>T</b> 스킬창 · <b>I</b> 가방 · <b>M</b> 지도` }
+        { icon: touch2 ? "📱" : "⌨️", title: "조작", body: touch2 ? `왼쪽 <b>방향패드</b>로 이동, 오른쪽 <b>공격·방어·회피·점프</b>.<br><b>스킬 1~4</b> 버튼으로 스킬을 쓰고, <b>마법</b> 버튼을 켜면 마법 스킬로 바뀐다.<br>방향패드를 톡톡 누른 뒤 공격을 누르면 커맨드 스킬도 나간다(예: ↓ → 공격).<br>위쪽의 <b>F</b>로 문·상자·제단·사람과 상호작용, <b>Q</b>로 물약.` : `<b>W A S D</b> 이동(화살표도 가능) · <b>J</b> 공격(연타 콤보) · <b>K</b> 방어 · <b>L</b> 회피 · <b>Space</b> 점프<br>커맨드 스킬: 방향 조합 + J (예: S D J = ↓→). <b>→(D)는 바라보는 방향</b>이다.<br>마법 스킬: <b>Shift</b>를 누른 채 방향 조합 + J. 단축 스킬 1~4.<br><b>F</b> 상호작용 · <b>Q</b> 물약 · <b>T</b> 스킬창 · <b>I</b> 가방 · <b>M</b> 지도` }
       ];
       const p = pages[Math.min(page, pages.length - 1)], last2 = page >= pages.length - 1, st = thenStart ? "1" : "0";
       this.show("intro", `<div class="win intro">
@@ -6566,7 +6567,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const sk = this.game.skills;
       const cards = session.choices.map((d) => {
         const lv = sk.level(d.id), picked = session.picked.has(d.id);
-        const cmd = d.command ? (d.type === "magic" ? "Ctrl + " : "") + seqToString(d.command) + " + J" : "패시브";
+        const cmd = d.command ? (d.type === "magic" ? "Shift + " : "") + seqToString(d.command) + " + J" : "패시브";
         return `<button class="card skill-card t-${d.type} ${picked ? "picked" : ""}" data-action="pick-skill" data-id="${d.id}" ${picked || sk.points <= 0 ? "disabled" : ""}>
         <div class="ic">${d.icon}</div>
         <div class="badge">${SKILL_TYPE_LABEL[d.type]}${d.tier >= 2 ? " · 상위" : ""}</div>
@@ -6622,7 +6623,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       var _a4;
       const sk = this.game.skills, lv = sk.level(d.id), max = d.maxLevel || 5;
       const learned = lv > 0, ok = sk.meetsRequirements(d);
-      const cmd = d.command ? `<span class="cmd">${d.type === "magic" ? "Ctrl + " : ""}${seqToString(d.command)} + J</span>` : "";
+      const cmd = d.command ? `<span class="cmd">${d.type === "magic" ? "Shift + " : ""}${seqToString(d.command)} + J</span>` : "";
       const req = d.requires ? `<div class="req ${ok ? "ok" : ""}">선행: ${Object.entries(d.requires).map(([id, l]) => {
         var _a5;
         return `${(_a5 = SKILLS.find((s) => s.id === id)) == null ? void 0 : _a5.name} Lv${l}`;
@@ -6641,8 +6642,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const jobList = JOBS.filter((j) => j.check).map((j) => `<li><b>${j.name}</b> — ${j.hint}</li>`).join("");
       return `<div class="win wide">${this.header("스킬창", "skills", jobLine)}
       <div class="cols3">
-        <section><h3>물리 스킬 <small>방향키 + J</small></h3>${by("physical")}</section>
-        <section><h3>마법 스킬 <small>Ctrl + 방향키 + J</small></h3>${by("magic")}</section>
+        <section><h3>물리 스킬 <small>방향키(WASD) + J</small></h3>${by("physical")}</section>
+        <section><h3>마법 스킬 <small>Shift + 방향키 + J</small></h3>${by("magic")}</section>
         <section><h3>패시브</h3>${by("passive")}<h3>궁극기</h3>${ult}</section>
       </div>
       <footer><b>전직 조건</b> (스탯 성장 비율 기준, 성장 레벨 합 ${BALANCE.job.minGrowthLevels} 이상) <ul class="inline">${jobList}</ul></footer>
