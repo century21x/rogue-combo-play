@@ -169,6 +169,12 @@ button.big.alt { background: #2f5a3a; border-color: #6bd68a; }
 .bs.sel { border-color: var(--gold); box-shadow: 0 0 8px rgba(255,215,0,0.6); }
 .bs.k-eq { border-color: rgba(255,179,71,0.45); } .bs.k-recipe { border-color: rgba(181,140,255,0.55); } .bs.k-consumable { border-color: rgba(124,255,156,0.4); }
 .bs .ct { position: absolute; right: 1px; bottom: 0; font-size: 10px; color: #fff; text-shadow: 0 0 3px #000, 0 0 2px #000; }
+/* 등급: 고급 이상은 테두리 색 + 약한 광택 (일반은 기존 종류별 테두리 유지) */
+.bs.g-uncommon, .bs.g-rare, .bs.g-legendary { border-color: var(--gc); }
+.bs.g-rare { box-shadow: inset 0 0 6px rgba(90,176,255,0.35); }
+.bs.g-legendary { box-shadow: inset 0 0 8px rgba(255,215,0,0.5); background: #2a2415; }
+.bs.sel { border-color: var(--gold); }
+.gtag { font-size: 11px; font-style: normal; opacity: 0.9; border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; margin-right: 2px; }
 .bdetail { margin-top: 8px; padding: 8px; background: rgba(255,255,255,0.05); border-radius: 8px; font-size: 13px; }
 .win .row.left { justify-content: flex-start; margin-top: 8px; flex-wrap: wrap; gap: 6px; }
 .items.tall { max-height: 300px; }
@@ -272,7 +278,17 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
   var ROOM = { width: 1200, floorTop: 335, floorBottom: 515, wallLeft: 40 };
   var BALANCE = {
     /** 3. 행동 기반 스탯 성장 */
-    stat: { start: 1, gainMin: 0.01, gainMax: 0.1, jitter: 0.15 },
+    stat: {
+      start: 1,
+      gainMin: 0.01,
+      gainMax: 0.1,
+      jitter: 0.15,
+      decayLevels: 8,
+      // 레벨 감쇠: 상승량 × 1/(1+(레벨-1)/decayLevels) — Lv9 50%, Lv17 33%, Lv41 17%
+      softCap: 40,
+      softCapMul: 0.25
+    },
+    // Lv40 이후 상승량 추가로 ×0.25 (상한 없음)
     str: { physAtkPerLevel: 3 },
     // +1 당 물리 공격력 +3 (고정)
     agi: {
@@ -512,10 +528,12 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     gain(key, weight = 0.5, source = "manual") {
       var _a4, _b;
       if (!(key in this.values)) throw new Error(`unknown stat: ${key}`);
-      const { gainMin, gainMax, jitter } = this.cfg.stat;
+      const { gainMin, gainMax, jitter, decayLevels = 0, softCap = Infinity, softCapMul = 1 } = this.cfg.stat;
       const t = clamp(weight + (this.rng() * 2 - 1) * jitter, 0, 1);
-      const amount = +(gainMin + (gainMax - gainMin) * t).toFixed(4);
       const before = this.level(key);
+      let mul = decayLevels > 0 ? 1 / (1 + (before - 1) / decayLevels) : 1;
+      if (before >= softCap) mul *= softCapMul;
+      const amount = +((gainMin + (gainMax - gainMin) * t) * mul).toFixed(4);
       this.values[key] = +(this.values[key] + amount).toFixed(4);
       const after = this.level(key);
       (_a4 = this.bus) == null ? void 0 : _a4.emit("stat:gain", { key, amount, value: this.values[key], source });
@@ -2930,6 +2948,81 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
   ITEMS.mp_potion.needs = { magic_dust: 2, bat_wing: 1 };
   ITEMS.bag_expansion.needs = { leather: 15, spider_silk: 5, troll_blood: 2, magic_dust: 10 };
   for (const id of ["hp_potion", "mp_potion", "bag_expansion"]) ITEMS["recipe_" + id] = { name: `레시피: ${ITEMS[id].name}`, type: "recipe", teaches: id, icon: "📜", tier: id === "bag_expansion" ? 2 : 1 };
+  var GRADES = {
+    common: { name: "일반", color: "#c8c8d4", drop: 1, w: 60, rank: 1 },
+    uncommon: { name: "고급", color: "#7CFC00", drop: 0.55, w: 28, rank: 2 },
+    rare: { name: "희귀", color: "#5ab0ff", drop: 0.3, w: 10, rank: 3 },
+    legendary: { name: "전설", color: "#ffd700", drop: 0.12, w: 2, rank: 4 }
+  };
+  var GRADE_OF = {
+    // 재료
+    slime_gel: "common",
+    bat_wing: "common",
+    leather: "common",
+    iron_ore: "common",
+    magic_dust: "common",
+    spore: "common",
+    bone: "common",
+    grave_dust: "common",
+    goblin_fang: "uncommon",
+    spider_silk: "uncommon",
+    orc_tusk: "uncommon",
+    wolf_pelt: "uncommon",
+    troll_blood: "uncommon",
+    harpy_feather: "uncommon",
+    lizard_scale: "uncommon",
+    hellfire_ash: "uncommon",
+    ectoplasm: "rare",
+    gargoyle_shard: "rare",
+    minotaur_horn: "rare",
+    dark_crystal: "rare",
+    demon_horn: "rare",
+    dragon_scale: "legendary",
+    dragon_heart: "legendary",
+    // 무기
+    rusty_sword: "common",
+    oak_staff: "common",
+    iron_sword: "common",
+    iron_dagger: "uncommon",
+    ice_sword: "uncommon",
+    flame_staff: "uncommon",
+    thunder_mace: "uncommon",
+    troll_club: "uncommon",
+    bone_wand: "uncommon",
+    shadow_blade: "rare",
+    crystal_staff: "rare",
+    demon_scythe: "rare",
+    void_staff: "rare",
+    dragon_slayer: "legendary",
+    hellfire_blade: "legendary",
+    // 방어구
+    leather_armor: "common",
+    padded_robe: "common",
+    iron_armor: "common",
+    wolf_cloak: "uncommon",
+    troll_hide: "uncommon",
+    harpy_mantle: "uncommon",
+    bone_plate: "uncommon",
+    gargoyle_plate: "rare",
+    shadow_shroud: "rare",
+    dragon_mail: "legendary",
+    // 장신구
+    swift_ring: "common",
+    thunder_ring: "uncommon",
+    vitality_amulet: "uncommon",
+    meditation_ring: "rare",
+    dragon_eye: "legendary",
+    // 소비/확장
+    hp_potion: "common",
+    mp_potion: "common",
+    bag_expansion: "uncommon"
+  };
+  for (const [id, def] of Object.entries(ITEMS)) {
+    if (def.type === "recipe") def.grade = GRADE_OF[def.teaches] || "common";
+    else def.grade = GRADE_OF[id] || "common";
+  }
+  var gradeOf = (def) => GRADES[def == null ? void 0 : def.grade] || GRADES.common;
+  var gradeDrop = (id) => gradeOf(ITEMS[id]).drop;
   var SLOT_LABEL = { weapon: "무기", armor: "방어구", accessory: "장신구" };
   var STARTER_RECIPES = ["rusty_sword", "leather_armor", "hp_potion"];
   var RECIPE_LIMIT = 20;
@@ -2982,13 +3075,14 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     boss_demon_lord: [{ id: "demon_horn", p: 1, n: 4 }, { id: "hellfire_ash", p: 1, n: 8 }],
     boss_dragon: [{ id: "dragon_scale", p: 1, n: 10 }, { id: "dragon_heart", p: 1, n: 2 }]
   };
-  var RECIPE_DROP = { mob: 0.015, chest: 0.35, boss: 1 };
+  var RECIPE_DROP = { mob: 0.012, chest: 0.25, boss: 1, altar: 0.4, altarHard: 0.15 };
+  var ALTAR_RECIPE_WEIGHTS = { rare: 70, legendary: 30 };
   function recipeTierForFloor(floorIdx) {
     return floorIdx < 29 ? 1 : floorIdx < 59 ? 2 : 3;
   }
   function chestPool(floorIdx) {
     const band = Math.min(10, Math.floor(floorIdx / 10) + 1);
-    return Object.entries(ITEMS).filter(([, d]) => d.type === "material" && d.band <= band && d.band >= band - 1).map(([id, d]) => ({ id, w: d.band === band ? 3 : 1 })).concat([{ id: "magic_dust", w: 3 }, { id: "hp_potion", w: 2 }]);
+    return Object.entries(ITEMS).filter(([, d]) => d.type === "material" && d.band <= band && d.band >= band - 1).map(([id, d]) => ({ id, w: (d.band === band ? 3 : 1) * gradeOf(d).drop })).concat([{ id: "magic_dust", w: 3 }, { id: "hp_potion", w: 2 }]);
   }
   var STAT_LABEL2 = { physAtk: "물공", magicAtk: "마공", def: "방어", maxHp: "HP", maxMp: "MP", moveSpeedPct: "이속", autoDodge: "자동회피", hpRegen: "HP재생/s", mpRegen: "MP재생/s", atkSpeedPct: "공속" };
   var EL_LABEL = { ice: "얼음", fire: "화염", lightning: "번개", arcane: "비전", void: "공허", shadow: "그림자" };
@@ -5643,24 +5737,29 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         this.ui.toast("제단의 보물", got.join(" · "));
       } });
     }
-    /** 제단 퍼즐 보상: 두 구간 위의 상급 재료 3~5개 + 최상위 티어 미습득 레시피 1개 + 물약 */
+    /**
+     * 제단 퍼즐 보상: 두 구간 위의 상급 재료 3~5개(등급 가중) + 물약
+     *  + 레시피 40%(어려운 퍼즐 +15%): 희귀 70 / 전설 30 우대. 안 나오면 대신 상급 재료 +2
+     */
     altarReward() {
       const r = this.room, band = Math.min(10, Math.floor(this.depth / 10) + 1), hi = Math.min(10, band + 2);
-      const mats = Object.entries(ITEMS).filter(([, d]) => d.type === "material" && d.band >= Math.max(1, hi - 1) && d.band <= hi).map(([id]) => id);
+      const mats = Object.entries(ITEMS).filter(([, d]) => d.type === "material" && d.band >= Math.max(1, hi - 1) && d.band <= hi).map(([id, d]) => ({ id, w: gradeOf(d).drop }));
       const got = [];
-      const n = 3 + Math.floor(this.rng() * 3);
+      const pz = r.cell.puzzle, hard = pz && pz.size >= 4;
+      const wantRecipe = this.rng() < RECIPE_DROP.altar + (hard ? RECIPE_DROP.altarHard : 0);
+      const n = 3 + Math.floor(this.rng() * 3) + (wantRecipe ? 0 : 2);
       for (let i = 0; i < n; i++) {
-        const id = pick(this.rng, mats);
+        const id = this.pickFromPool(mats);
+        if (!id) break;
         this.spawnPickup(id, r.altar.x, r.altar.y);
         got.push(ITEMS[id].name);
       }
-      const unknown = CRAFTABLE.filter((id) => !this.inv.knowsRecipe(id));
-      const top = Math.max(0, ...unknown.map((id) => ITEMS[id].tier || 1));
-      const best = unknown.filter((id) => (ITEMS[id].tier || 1) === top);
-      if (best.length) {
-        const rid = pick(this.rng, best);
-        this.spawnPickup("recipe_" + rid, r.altar.x + 30, r.altar.y);
-        got.push(ITEMS["recipe_" + rid].name);
+      if (wantRecipe) {
+        const rid = this.rollRecipe({ minGrade: "rare", weights: ALTAR_RECIPE_WEIGHTS });
+        if (rid) {
+          this.spawnPickup("recipe_" + rid, r.altar.x + 30, r.altar.y);
+          got.push(`${ITEMS["recipe_" + rid].name}(${gradeOf(ITEMS[rid]).name})`);
+        }
       }
       this.spawnPickup("hp_potion", r.altar.x - 30, r.altar.y);
       this.spawnPickup("mp_potion", r.altar.x - 50, r.altar.y);
@@ -6210,15 +6309,15 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       e.act = null;
       this.kills++;
       const drops = MONSTER_DROPS[e.def.id] || e.def.drops || [];
-      for (const d of drops) if (ITEMS[d.id] && this.rng() < d.p) for (let k = 0; k < (d.n || 1); k++) this.spawnPickup(d.id, e.x, e.y);
-      const rp = e.boss ? RECIPE_DROP.boss : RECIPE_DROP.mob * (e.elite ? 3 : 1);
-      if (this.rng() < rp) {
+      for (const d of drops) if (ITEMS[d.id] && this.rng() < (d.n ? d.p : d.p * gradeDrop(d.id))) for (let k = 0; k < (d.n || 1); k++) this.spawnPickup(d.id, e.x, e.y);
+      if (e.boss) {
+        const r1 = this.rollRecipe({ minGrade: "uncommon" });
+        if (r1) this.spawnPickup("recipe_" + r1, e.x, e.y);
+        const r2 = this.rollRecipe();
+        if (r2) this.spawnPickup("recipe_" + r2, e.x + 40, e.y);
+      } else if (this.rng() < RECIPE_DROP.mob * (e.elite ? 3 : 1)) {
         const rid = this.rollRecipe();
         if (rid) this.spawnPickup("recipe_" + rid, e.x, e.y);
-      }
-      if (e.boss) {
-        const rid = this.rollRecipe();
-        if (rid) this.spawnPickup("recipe_" + rid, e.x + 40, e.y);
       }
       if (e.deathBurst) {
         this.spawnHitbox({ owner: "enemy", x1: e.x - e.deathBurst.radius, x2: e.x + e.deathBurst.radius, y: e.y, laneTol: 70, atk: Math.round(e.atk * e.deathBurst.mul), knock: 260, tier: e.def.tier, ttl: 0.1, zMax: 60, fromX: e.x });
@@ -6230,13 +6329,31 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         this.shake(10);
       }
     }
-    /** 현재 층 티어의 미습득 레시피 하나 (없으면 아무 미습득, 그것도 없으면 null) */
-    rollRecipe() {
-      const tier = recipeTierForFloor(this.depth);
-      const unknown = CRAFTABLE.filter((id) => !this.inv.knowsRecipe(id));
+    /**
+     * 미습득 레시피 하나를 등급 가중 추첨 (일반 60 · 고급 28 · 희귀 10 · 전설 2).
+     * 현재 층 티어 우선(없으면 낮은 티어, 그것도 없으면 아무 미습득). minGrade 로 최소 등급, weights 로 가중치 재정의.
+     */
+    rollRecipe({ minGrade = "common", weights = null } = {}) {
+      const tier = recipeTierForFloor(this.depth), minRank = GRADES[minGrade].rank;
+      let unknown = CRAFTABLE.filter((id) => !this.inv.knowsRecipe(id));
+      const byGrade = unknown.filter((id) => gradeOf(ITEMS[id]).rank >= minRank);
+      if (byGrade.length) unknown = byGrade;
       const same = unknown.filter((id) => (ITEMS[id].tier || 1) === tier), lower = unknown.filter((id) => (ITEMS[id].tier || 1) < tier);
       const pool = same.length ? same : lower.length ? lower : unknown;
-      return pool.length ? pick(this.rng, pool) : null;
+      if (!pool.length) return null;
+      const useW = byGrade.length ? weights : null;
+      const wOf = (id) => {
+        const g = ITEMS[id].grade;
+        return useW ? useW[g] ?? 0 : gradeOf(ITEMS[id]).w;
+      };
+      let total = pool.reduce((s, id) => s + wOf(id), 0);
+      if (total <= 0) return pick(this.rng, pool);
+      let r = this.rng() * total;
+      for (const id of pool) {
+        r -= wOf(id);
+        if (r <= 0) return id;
+      }
+      return pool[pool.length - 1];
     }
     /** 레시피 습득 처리 ('full' 이면 교체 UI) */
     learnRecipeItem(itemId) {
@@ -6548,7 +6665,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
             continue;
           }
           pk.taken = true;
-          this.fxText(pk.x, pk.y - 50, `${def.icon} ${def.name}`, "#ffd700", 14);
+          this.fxText(pk.x, pk.y - 50, `${def.icon} ${def.name}`, gradeOf(def).color, gradeOf(def).rank >= 3 ? 16 : 14);
           if (def.type === "recipe") this.fxText(pk.x, pk.y - 66, "가방에서 읽어 교체", "#ff9c9c", 12);
         }
       }
@@ -6863,7 +6980,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     storageHtml() {
       var _a4;
       const inv = this.game.inv;
-      const row = (x, side) => `<div class="item"><span>${x.def.icon} ${esc(x.def.name)} <b>×${x.count}</b></span><span>
+      const row = (x, side) => `<div class="item"><span>${x.def.icon} <span style="color:${gradeOf(x.def).color}">${esc(x.def.name)}</span> <b>×${x.count}</b></span><span>
       <button data-action="${side}" data-id="${x.id}" data-n="1">${side === "store" ? "보관" : "꺼내기"} 1</button>
       <button data-action="${side}" data-id="${x.id}" data-n="all">전부</button></span></div>`;
       const byId = /* @__PURE__ */ new Map();
@@ -6880,7 +6997,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         { icon: "🌫️", title: "재의 마을", body: `산 아래 작은 마을에 어느 날 <b>저주 안개</b>가 내려앉았다.<br>안개는 사람들을 삼켜 산속 던전 깊은 곳으로 끌고 갔고, 남은 이들은 마을을 떠났다.<br><br>당신은 남기로 했다. 검과 마법, 그리고 몸으로 익힌 것만 믿고 안개의 근원을 향해 내려간다.` },
         { icon: "🏔️", title: "99층 아래, 안개의 심장", body: `던전은 <b>99층</b>이다. 층마다 미로처럼 방이 얽혀 있고, 매번 모양이 바뀐다.<br>10층마다 <b>보스</b>가 길을 막고, 그 뒤에는 <b>안식처</b>가 있어 쉬고, 창고를 쓰고, 기록을 남길 수 있다.<br><br>층 어딘가에는 <b>갇힌 주민</b>이 있다. 구출하면 안식처 모닥불 곁에 모여든다.<br>가장 깊은 곳의 <b>안개의 심장</b>을 부수는 것이 이 여정의 끝이다.` },
         { icon: "⚔️", title: "행동이 곧 성장", body: `이 게임에는 레벨업 버튼이 없다.<br>· <b>때리면 힘</b>이, <b>피하면 민첩</b>이, <b>맞거나 막으면 체력</b>이, <b>마법을 쓰면 마력</b>이 조금씩 오른다.<br>· 스탯이 쌓이면 당신의 싸움 방식대로 <b>직업</b>이 정해지고 궁극기가 열린다.<br>· 방 3개를 돌파할 때마다 <b>스킬 포인트</b>를 얻어 스킬을 고른다(저축 최대 3, 총 40회).<br>· 몬스터는 <b>재료와 레시피</b>를 떨어뜨린다. 장비는 오직 <b>제작</b>으로만 얻는다. 무기에는 저절로 발동하는 힘이 깃들어 있다.<br>· <b>짙은 안개 방</b>에는 몬스터 대신 <b>함정</b>과 <b>봉인 제단</b>이 있다. 퍼즐(그림 맞추기·불 끄기·미니 스도쿠)을 풀면 <b>상급 재료와 레시피</b>를 얻는다(선택).` },
-        { icon: touch2 ? "📱" : "⌨️", title: "조작", body: touch2 ? `왼쪽 <b>방향패드</b>로 이동, 오른쪽 <b>공격·방어·회피·점프</b>.<br><b>스킬 1~4</b> 버튼으로 스킬을 쓰고, <b>마법</b> 버튼을 켜면 공격 버튼이 마법(마력탄·마법 커맨드)이 된다.<br>방향패드를 톡톡 누른 뒤 공격을 누르면 커맨드 스킬도 나간다(예: ↓ → 공격).<br>위쪽의 <b>F</b>로 문·상자·제단·사람과 상호작용, <b>Q</b>로 물약.` : `<b>W A S D</b> 이동(화살표도 가능) · <b>J</b> 공격(연타 콤보) · <b>K</b> 마법 공격(마력탄) · <b>L</b> 방어 · <b>Shift</b> 회피 · <b>Space</b> 점프<br>물리 스킬: 방향 조합 + <b>J</b> (예: S D J = ↓→ 강타). 마법 스킬: 방향 조합 + <b>K</b> (예: S D K = 파이어볼).<br><b>→(D)는 바라보는 방향</b>이다. 단축 스킬 1~4.<br><b>F</b> 상호작용 · <b>Q</b> 물약 · <b>T</b> 스킬창 · <b>I</b> 가방 · <b>M</b> 지도` }
+        { icon: touch2 ? "📱" : "⌨️", title: "조작", body: touch2 ? `왼쪽 화면 <b>아무 곳이나 누르면 조이스틱</b>이 생긴다. 오른쪽은 <b>공격·방어·회피·점프·물약</b>.<br><b>스킬 1~4</b> 버튼으로 스킬을 쓰고, <b>마법</b> 버튼을 켜면 공격 버튼이 마법(마력탄·마법 커맨드)이 된다.<br>조이스틱을 톡톡 튕긴 뒤 공격을 누르면 커맨드 스킬도 나간다(예: ↓ → 공격).<br>적이 없을 때 문·상자·제단·사람 앞에 서면 <b>공격 버튼이 입장·열기·퍼즐·대화</b>로 바뀐다. 위쪽 <b>≡ 메뉴</b>에 스킬·가방·지도, <b>미니맵</b>을 누르면 지도.` : `<b>W A S D</b> 이동(화살표도 가능) · <b>J</b> 공격(연타 콤보) · <b>K</b> 마법 공격(마력탄) · <b>L</b> 방어 · <b>Shift</b> 회피 · <b>Space</b> 점프<br>물리 스킬: 방향 조합 + <b>J</b> (예: S D J = ↓→ 강타). 마법 스킬: 방향 조합 + <b>K</b> (예: S D K = 파이어볼).<br><b>→(D)는 바라보는 방향</b>이다. 단축 스킬 1~4.<br><b>F</b> 상호작용 · <b>Q</b> 물약 · <b>T</b> 스킬창 · <b>I</b> 가방 · <b>M</b> 지도` }
       ];
       const p = pages[Math.min(page, pages.length - 1)], last2 = page >= pages.length - 1, st = thenStart ? "1" : "0";
       this.show("intro", `<div class="win intro">
@@ -7016,11 +7133,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         return `<button class="pslot ${it ? "on" : ""} s-${slot}" data-action="${it ? "unequip" : "noop"}" data-slot="${slot}" title="${it ? esc(it.name) + " (누르면 해제)" : SLOT_LABEL[slot]}"><span class="ic">${it ? it.icon : "＋"}</span><small>${it ? esc(it.name) : SLOT_LABEL[slot]}</small></button>`;
       };
       const equip = `<div class="pdoll"><canvas class="pdoll-cv" width="220" height="230"></canvas>${slotBtn("weapon")}${slotBtn("armor")}${slotBtn("accessory")}</div>
-      <div class="pdesc">${Object.entries(inv.equipped).map(([slot, id]) => id ? `<div><b>${ITEMS[id].icon} ${esc(ITEMS[id].name)}</b> <small>${esc(describeItem(ITEMS[id], sName))}</small></div>` : "").join("") || '<span class="dim">장비 없음 — 가방에서 장비를 눌러 장착</span>'}</div>`;
+      <div class="pdesc">${Object.entries(inv.equipped).map(([slot, id]) => id ? `<div><b style="color:${gradeOf(ITEMS[id]).color}">${ITEMS[id].icon} ${esc(ITEMS[id].name)}</b> <small>${esc(describeItem(ITEMS[id], sName))}</small></div>` : "").join("") || '<span class="dim">장비 없음 — 가방에서 장비를 눌러 장착</span>'}</div>`;
       const sel = this.selSlot, cells = inv.bag.map((x, i) => {
         if (!x) return `<div class="bs empty"></div>`;
-        const def = ITEMS[x.id];
-        return `<button class="bs ${sel === i ? "sel" : ""} k-${def.slot ? "eq" : def.type}" data-action="bagsel" data-i="${i}" title="${esc(def.name)}"><span class="ic">${def.icon}</span>${x.count > 1 ? `<span class="ct">${x.count}</span>` : ""}</button>`;
+        const def = ITEMS[x.id], gr = gradeOf(def);
+        return `<button class="bs ${sel === i ? "sel" : ""} k-${def.slot ? "eq" : def.type} g-${def.grade}" style="--gc:${gr.color}" data-action="bagsel" data-i="${i}" title="${esc(def.name)} [${gr.name}]"><span class="ic">${def.icon}</span>${x.count > 1 ? `<span class="ct">${x.count}</span>` : ""}</button>`;
       }).join("");
       let detail = '<p class="dim">칸을 클릭하면 정보와 행동이 표시됩니다.</p>';
       if (sel != null && inv.bag[sel]) {
@@ -7031,11 +7148,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         if (def.type === "recipe") acts.push(`<button data-action="bagact" data-op="read" data-i="${sel}">읽기 (습득)</button>`);
         acts.push(`<button data-action="bagact" data-op="discard" data-i="${sel}">1개 버리기</button>`, `<button data-action="bagact" data-op="discardAll" data-i="${sel}">전부 버리기</button>`);
         const info = isEquip(def) ? describeItem(def, sName) : def.type === "recipe" ? `읽으면 ${ITEMS[def.teaches].name} 제작법을 배운다` : def.desc || (def.type === "material" ? `재료 (${def.band}구간)` : "");
-        detail = `<div class="bdetail"><b>${def.icon} ${esc(def.name)}</b> <span class="dim">×${x.count}</span><div class="small">${esc(info)}</div><div class="row left">${acts.join("")}</div></div>`;
+        detail = `<div class="bdetail"><b style="color:${gradeOf(def).color}">${def.icon} ${esc(def.name)}</b> <i class="gtag" style="color:${gradeOf(def).color}">${gradeOf(def).name}</i> <span class="dim">×${x.count}</span><div class="small">${esc(info)}</div><div class="row left">${acts.join("")}</div></div>`;
       }
       const recipes = inv.recipeList().map(({ id, def, can }) => {
         const needs = Object.entries(def.needs).map(([m, n]) => `<span class="${inv.count(m) >= n ? "ok" : "no"}">${ITEMS[m].icon}${esc(ITEMS[m].name)} ${inv.count(m)}/${n}</span>`).join(" ");
-        return `<div class="item"><span>${def.icon} <b>${esc(def.name)}</b> <small>${esc(isEquip(def) ? describeItem(def, sName) : def.desc || "")}</small><br><small>${needs}</small></span><span class="acts"><button data-action="craft" data-id="${id}" ${can ? "" : "disabled"}>제작</button><button class="x" data-action="forget" data-id="${id}" title="레시피 삭제">✕</button></span></div>`;
+        return `<div class="item"><span>${def.icon} <b style="color:${gradeOf(def).color}">${esc(def.name)}</b> <i class="gtag" style="color:${gradeOf(def).color}">${gradeOf(def).name}</i> <small>${esc(isEquip(def) ? describeItem(def, sName) : def.desc || "")}</small><br><small>${needs}</small></span><span class="acts"><button data-action="craft" data-id="${id}" ${can ? "" : "disabled"}>제작</button><button class="x" data-action="forget" data-id="${id}" title="레시피 삭제">✕</button></span></div>`;
       }).join("") || '<p class="dim">아는 레시피가 없다</p>';
       return `<div class="win wide">${this.header("장비 / 가방 / 제작", "inventory", `${esc(p.name)} · ${esc(g.jobs.current.name)} · 가방 ${inv.usedSlots}/${inv.bagSlots}칸 · 레시피 ${inv.recipes.length}/${RECIPE_LIMIT}`)}
       <div class="cols2">
@@ -7051,7 +7168,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         var _a4;
         return ((_a4 = SKILL_BY_ID[id]) == null ? void 0 : _a4.name) || id;
       };
-      const rows = inv.recipes.map((id) => `<div class="item"><span>${ITEMS[id].icon} <b>${esc(ITEMS[id].name)}</b> <small>${esc(isEquip(ITEMS[id]) ? describeItem(ITEMS[id], sName) : ITEMS[id].desc || "")}</small></span><button data-action="recipe-replace" data-old="${id}">이것과 교체</button></div>`).join("");
+      const rows = inv.recipes.map((id) => `<div class="item"><span>${ITEMS[id].icon} <b style="color:${gradeOf(ITEMS[id]).color}">${esc(ITEMS[id].name)}</b> <i class="gtag" style="color:${gradeOf(ITEMS[id]).color}">${gradeOf(ITEMS[id]).name}</i> <small>${esc(isEquip(ITEMS[id]) ? describeItem(ITEMS[id], sName) : ITEMS[id].desc || "")}</small></span><button data-action="recipe-replace" data-old="${id}">이것과 교체</button></div>`).join("");
       this.open.add("recipe");
       this.game.paused = true;
       this.show("recipe", `<div class="win wide"><h2>📜 레시피가 가득 찼습니다 (${RECIPE_LIMIT}/${RECIPE_LIMIT})</h2>
