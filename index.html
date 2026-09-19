@@ -159,6 +159,12 @@ button.big.alt { background: #2f5a3a; border-color: #6bd68a; }
 .pt.sd.given { color: var(--gold); background: #2a2a2a; cursor: default; }
 .pt.sd.bad { color: #ff6a5a; border-color: rgba(255,90,80,0.8); box-shadow: inset 0 0 8px rgba(255,90,80,0.35); }
 .lhint.bad { color: #ff6a5a; }
+/* 힌트 표시 */
+.pt.hint-from { outline: 3px solid #7CFC00; outline-offset: -3px; box-shadow: 0 0 12px rgba(124,252,0,0.7); z-index: 1; }
+.pt.hint-to { outline: 3px dashed #7CFC00; outline-offset: -3px; }
+.pt.light.hint { outline: 3px solid #7CFC00; outline-offset: -3px; box-shadow: 0 0 12px rgba(124,252,0,0.7); }
+.pt.sd.hinted { color: #7ad0ff; background: #1a2a3a; }
+.hintbtn { margin-bottom: 6px; }
 .win.puzzle h2 { position: relative; padding-right: 36px; }
 .win.puzzle h2 .x { position: absolute; right: 0; top: 50%; transform: translateY(-50%); }
 button.ghost.small { font-size: 11px; padding: 4px 8px; margin-top: 6px; }
@@ -254,7 +260,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     <div id="ui"></div>
     <div id="rotate-hint">📱 가로로 돌려주세요</div>
   </div>
-  <p class="footer">v0.1.0 (2026-09-19) · WASD 이동 · J 공격 · ↑J 올려치기 · ↓J 내려찍기 · L 흘리기 · K 마법 공격 · L 방어 · Shift 회피 · Space 점프 · 방향 조합+J 물리 스킬 / +K 마법 스킬(→=앞) · 1~4 단축 · F 상호작용 · Q 물약 · T 스킬 · I 가방 · M 지도 · F3 디버그 · <button id="touch-toggle" class="linkbtn">📱 터치 조작 표시</button></p>
+  <p class="footer">v0.1.0 (2026-09-19) · WASD 이동 · J 공격 · ↑J 올려치기 · ↓J 내려찍기 · L 흘리기 · K 마법 공격 · L 방어 · Shift 회피 · Space 점프 · 방향 조합+J 물리 스킬 / +K 마법 스킬(→=앞) · 1~4 단축 · 문·상자·사람 앞에서 J · Q 물약 · T 스킬 · I 가방 · M 지도 · F3 디버그 · <button id="touch-toggle" class="linkbtn">📱 터치 조작 표시</button></p>
   <script>
 (() => {
   // src/core/EventBus.js
@@ -383,8 +389,9 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     cmdRight: ["KeyD"],
     magicMod: [],
     // 키보드에서는 보조키 없음 (터치 UI 의 '마법' 토글만 사용)
-    interact: "KeyF",
+    interact: [],
     usePotion: "KeyQ",
+    // 상호작용 전용 키 없음(F 삭제): 적이 없을 때 J(공격) 가 상황 행동
     skillWindow: "KeyT",
     inventory: "KeyI",
     map: "KeyM",
@@ -2411,6 +2418,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
   };
 
   // src/systems/Puzzle.js
+  var HINT_MAX = 2;
   var SlidingPuzzle = class {
     constructor(size = 3, seed = 1, shuffleMoves = null) {
       this.size = size;
@@ -2442,6 +2450,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.tiles[e] = this.tiles[i];
       this.tiles[i] = -1;
       this.moves++;
+      this.refreshHint();
       return true;
     }
     /** 방향키: 빈칸 쪽으로 조각을 민다 (up = 빈칸 아래 조각이 위로) */
@@ -2465,6 +2474,21 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     solved() {
       return this.tiles.every((t, i) => t === i || i === this.n - 1 && t === -1);
+    }
+    /** 힌트(최대 HINT_MAX): 제자리가 아닌 첫 조각과 그 목표 칸을 표시. 조각이 제자리에 들어가면 표시가 사라진다 */
+    hint() {
+      if ((this.hintsUsed || 0) >= HINT_MAX || this.solved()) return false;
+      const tile = this.tiles.findIndex((t, i) => t !== i && i < this.n - 1);
+      if (tile < 0) return false;
+      this.hintMark = { tile, from: this.tiles.indexOf(tile), to: tile };
+      this.hintsUsed = (this.hintsUsed || 0) + 1;
+      return true;
+    }
+    refreshHint() {
+      const h = this.hintMark;
+      if (!h) return;
+      if (this.tiles[h.to] === h.tile) this.hintMark = null;
+      else h.from = this.tiles.indexOf(h.tile);
     }
     /** 반전수 기반 풀이 가능성 검사 (검증용) */
     static solvable(tiles, size) {
@@ -2555,6 +2579,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (i < 0 || i >= this.n) return false;
       for (const j of this.neighbors(i)) this.on[j] = !this.on[j];
       this.moves++;
+      if (this.hintMark === i) this.hintMark = null;
       return true;
     }
     tap(i) {
@@ -2562,6 +2587,47 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     solved() {
       return this.on.every((v) => !v);
+    }
+    /** GF(2) 가우스 소거로 현재 상태의 해(누를 칸 집합)를 구한다. 해가 없으면 null */
+    solve() {
+      const n = this.n, rows = [];
+      for (let r = 0; r < n; r++) {
+        const row = new Array(n + 1).fill(0);
+        for (let j = 0; j < n; j++) if (this.neighbors(j).includes(r)) row[j] = 1;
+        row[n] = this.on[r] ? 1 : 0;
+        rows.push(row);
+      }
+      const pivots = [];
+      let rank = 0;
+      for (let c = 0; c < n && rank < n; c++) {
+        let p = -1;
+        for (let r = rank; r < n; r++) if (rows[r][c]) {
+          p = r;
+          break;
+        }
+        if (p < 0) continue;
+        [rows[rank], rows[p]] = [rows[p], rows[rank]];
+        for (let r = 0; r < n; r++) if (r !== rank && rows[r][c]) for (let k = c; k <= n; k++) rows[r][k] ^= rows[rank][k];
+        pivots.push(c);
+        rank++;
+      }
+      for (let r = rank; r < n; r++) if (rows[r][n]) return null;
+      const x = new Array(n).fill(0);
+      pivots.forEach((c, r) => {
+        x[c] = rows[r][n];
+      });
+      return x;
+    }
+    /** 힌트(최대 HINT_MAX): 해에 포함된 칸 하나를 표시. 그 칸을 누르면 표시가 사라진다 */
+    hint() {
+      if ((this.hintsUsed || 0) >= HINT_MAX || this.solved()) return false;
+      const x = this.solve();
+      if (!x) return false;
+      const i = x.findIndex((v) => v === 1);
+      if (i < 0) return false;
+      this.hintMark = i;
+      this.hintsUsed = (this.hintsUsed || 0) + 1;
+      return true;
     }
   };
   var MiniSudoku = class {
@@ -2609,6 +2675,19 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (this.given[i]) return false;
       this.cells[i] = v;
       this.moves++;
+      return true;
+    }
+    /** 힌트(최대 HINT_MAX): 틀린 칸이 있으면 그 칸을, 없으면 빈칸 하나를 정답으로 채운다 (hinted 표시) */
+    hint() {
+      if ((this.hintsUsed || 0) >= HINT_MAX || this.solved()) return false;
+      this.hinted = this.hinted || Array(16).fill(false);
+      let i = this.cells.findIndex((v, k) => !this.given[k] && v && v !== this.solution[k]);
+      if (i < 0) i = this.cells.findIndex((v, k) => !this.given[k] && !v);
+      if (i < 0) return false;
+      this.cells[i] = this.solution[i];
+      this.hinted[i] = true;
+      this.moves++;
+      this.hintsUsed = (this.hintsUsed || 0) + 1;
       return true;
     }
     solved() {
@@ -4455,7 +4534,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (near) {
         ctx.font = this.f(13, true);
         ctx.fillStyle = "#ffd700";
-        ctx.fillText("[F] 입장", x, yPrompt);
+        ctx.fillText("[J]입장", x, yPrompt);
       }
       if (this.game.room.sealed && d.dir !== this.game.room.entryDir) {
         ctx.font = this.f(11);
@@ -4628,7 +4707,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.textAlign = "center";
         ctx.font = this.f(12, true);
         ctx.fillStyle = near ? "#ffd700" : "#f0e6d0";
-        ctx.fillText(near ? `[F] ${o.label}` : o.label, o.x, o.y + 22);
+        ctx.fillText(near ? `[J]${o.label}` : o.label, o.x, o.y + 22);
       }
       for (const t of r.traps) {
         if (!t.revealed) continue;
@@ -4704,7 +4783,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.textAlign = "center";
         ctx.font = this.f(12, true);
         ctx.fillStyle = near ? "#ffd700" : "#e0d0ff";
-        ctx.fillText(near ? !a.claimed ? "[F] 봉인 제단 — 퍼즐을 풀면 보물" : "빈 제단" : !a.claimed ? "봉인 제단 ✦" : "빈 제단", a.x, a.y + 22);
+        ctx.fillText(near ? !a.claimed ? "[J]봉인 제단 — 퍼즐을 풀면 보물" : "빈 제단" : !a.claimed ? "봉인 제단 ✦" : "빈 제단", a.x, a.y + 22);
       }
       if (r.cage) {
         const c = r.cage, near = this.nearPlayer(c, 80), n = c.npc;
@@ -4734,7 +4813,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.fillText(c.opened ? "빈 우리" : "갇힌 사람", c.x, c.y - 108);
         if (near && !c.opened && r.cleared) {
           ctx.fillStyle = "#ffd700";
-          ctx.fillText("[F] 우리 열기", c.x, c.y + 24);
+          ctx.fillText("[J]우리 열기", c.x, c.y + 24);
         } else if (!r.cleared) {
           ctx.fillStyle = "#ff9c9c";
           ctx.font = this.f(11);
@@ -4756,7 +4835,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.textAlign = "center";
         ctx.font = this.f(13, true);
         ctx.fillStyle = near ? "#ffd700" : "#cfd8ff";
-        ctx.fillText(near ? "[F] 아래층으로" : "아래로 내려가는 계단", s.x, s.y + 26);
+        ctx.fillText(near ? "[J]아래층으로" : "아래로 내려가는 계단", s.x, s.y + 26);
       }
       if (r.chest) {
         const c = r.chest, near = this.nearPlayer(c);
@@ -4774,7 +4853,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           ctx.textAlign = "center";
           ctx.font = this.f(13, true);
           ctx.fillStyle = "#ffd700";
-          ctx.fillText("[F] 열기", c.x, c.y + 22);
+          ctx.fillText("[J]열기", c.x, c.y + 22);
         }
       }
       if (r.portal) {
@@ -4789,7 +4868,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         ctx.textAlign = "center";
         ctx.font = this.f(13, true);
         ctx.fillStyle = "#9ad0ff";
-        ctx.fillText(this.nearPlayer(p, 90) ? "[F] 탈출" : "탈출구", p.x, p.y + 22);
+        ctx.fillText(this.nearPlayer(p, 90) ? "[J]탈출" : "탈출구", p.x, p.y + 22);
       }
       for (const pk of r.pickups) {
         const it = ITEMS[pk.id];
@@ -5786,7 +5865,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.font = this.f(10);
       ctx.fillStyle = "#8f8a7a";
       ctx.fillText("K 마력탄 · Shift 회피 · Space 점프", W - 16, y0 + 16);
-      ctx.fillText(`Q 물약 ×${g.inv.count("hp_potion")} · F 상호작용 · T I M 창`, W - 16, y0 + 32);
+      ctx.fillText(`Q 물약 ×${g.inv.count("hp_potion")} · 문·상자·사람 앞 J · T I M 창`, W - 16, y0 + 32);
     }
     drawHUD() {
       if (this.game.compact) return this.drawHUDCompact();
@@ -6527,7 +6606,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       r.doors = this.dungeon.doorsOf(r.cell).map((d) => ({ ...d, ...this.doorPos(d.dir) }));
       if (r.sealed) r.doors = r.doors.filter((d) => d.dir === r.entryDir).map((d) => ({ ...d, name: "들어온 문", hint: "" }));
       if (r.cell.type === "stairs" && r.cell.cleared) r.stairs = { x: r.width / 2, y: 380 };
-      if (r.doors.length && !r.sealed) this.message(`출구 ${r.doors.length}개: ${r.doors.map((d) => DIR_LABEL[d.dir]).join(" · ")}. 문 앞에서 F.`, "#cfd8ff");
+      if (r.doors.length && !r.sealed) this.message(`출구 ${r.doors.length}개: ${r.doors.map((d) => DIR_LABEL[d.dir]).join(" · ")}. 문 앞에서 J.`, "#cfd8ff");
     }
     // ── 스폰 헬퍼 ────────────────────────────────────────────
     spawnHitbox(h) {
@@ -6617,6 +6696,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (this.phase === "play" && this.paused && this.ui.puzzle) {
         const map = { cmdUp: "up", cmdDown: "down", cmdLeft: "left", cmdRight: "right" };
         if (map[action]) this.ui.puzzleKey(map[action]);
+        else if (action === "attack" || action === "guard" || action === "jump") this.ui.closePuzzle();
         return;
       }
       if (this.phase !== "play" || this.paused) return;
@@ -6807,7 +6887,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (r.stairs) return "계단으로 내려가라";
       if (r.portal) return "귀환 포탈 — 던전을 떠날 수 있다";
       if (r.altar && !r.altar.claimed) return "제단의 퍼즐 (선택)";
-      if (r.doors.length) return `출구 ${r.doors.length} · 문 앞에서 J/F`;
+      if (r.doors.length) return `출구 ${r.doors.length} · 문 앞에서 J`;
       return "…";
     }
     /** 하단 힌트 줄: 지금 할 수 있는 가장 좋은 행동 */
@@ -6817,7 +6897,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (r.enemies.some((e) => e.state === "windup" && e.pending && isHeavy(e.pending) && Math.abs(e.x - p.x) < 260)) return "붉은 예고 — L 로 흘려라!";
       if (this.airborneEnemyNear(C3.slam.range)) return "J 공중 추가타 · ↓+J 내려찍기";
       const ca = this.contextAction();
-      if (ca) return `${ca.label} — J 또는 F`;
+      if (ca) return `${ca.label} — J`;
       if (r.enemies.some((e) => e.state !== "dead")) return "↑+J 로 띄우고 J 로 이어가라 · 방향 조합 + J/K 커맨드";
       return "WASD 이동 · 미니맵 클릭 = 지도";
     }
@@ -7440,7 +7520,12 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       root.addEventListener("click", (e) => {
         const t = e.target.closest("[data-action]");
-        if (!t) return;
+        if (!t) {
+          const id = Object.keys(this.panels).find((k) => this.panels[k] === e.target);
+          if (id === "puzzle") this.closePuzzle();
+          else if (id && this.open.has(id)) this.closeWindow(id);
+          return;
+        }
         e.preventDefault();
         this.handle(t.dataset.action, t);
         t.blur();
@@ -7490,7 +7575,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       else if (id === "storage") this.show("storage", this.storageHtml());
     }
     handle(action, el) {
-      var _a4, _b, _c;
+      var _a4, _b, _c, _d, _e;
       const g = this.game;
       switch (action) {
         case "start":
@@ -7605,8 +7690,19 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         case "puzzle-reset": {
           const pz = (_c = this.puzzle) == null ? void 0 : _c.puzzle;
           if ((pz == null ? void 0 : pz.kind) === "sudoku") {
-            pz.cells = pz.cells.map((v, i) => pz.given[i] ? v : 0);
+            pz.cells = pz.cells.map((v, i) => {
+              var _a5;
+              return pz.given[i] || ((_a5 = pz.hinted) == null ? void 0 : _a5[i]) ? v : 0;
+            });
             pz.moves = 0;
+            this.renderPuzzle();
+          }
+          break;
+        }
+        case "puzzle-hint": {
+          const pz = (_d = this.puzzle) == null ? void 0 : _d.puzzle;
+          if ((_e = pz == null ? void 0 : pz.hint) == null ? void 0 : _e.call(pz)) {
+            this.toast("힌트", pz.kind === "sudoku" ? "한 칸을 정답으로 채웠다" : pz.kind === "lights" ? "초록 칸을 눌러라" : "초록 조각을 점선 칸으로");
             this.renderPuzzle();
           }
           break;
@@ -7629,7 +7725,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           <div><b>올려치기</b> ↑+J → 공중 J 추가타 → <b>내려찍기</b> ↓+J</div><div><b>흘리기</b> 붉은 예고(!) 직전 L → J 강한 반격</div>
           <div><b>방어</b> L (유지)</div><div><b>회피</b> Shift</div><div><b>점프</b> Space</div>
           <div><b>물리 스킬</b> 방향 조합 + J (예: S D J)</div><div><b>마법 스킬</b> 방향 조합 + K (예: S D K)</div><div><b>단축 스킬</b> 1 2 3 4</div>
-          <div><b>상호작용</b> F</div><div><b>물약</b> Q</div><div><b>창</b> T 스킬 · I 가방 · M 지도</div>
+          <div><b>상호작용</b> 적이 없을 때 문·상자·사람 앞에서 J</div><div><b>물약</b> Q</div><div><b>창</b> T 스킬 · I 가방 · M 지도</div>
         </div>
         <p class="note">스탯은 행동으로만 오릅니다 — 때리면 힘, 피하면 민첩, 맞거나 막으면 체력, 마법을 쓰면 마력.<br>커맨드의 <b>→</b>는 <b>바라보는 방향(앞)</b>입니다. 왼쪽을 볼 때 ↓←+J 는 오른쪽을 볼 때 ↓→+J 와 같은 스킬입니다.</p>
         <div class="row">
@@ -7684,15 +7780,17 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const pz = P2.puzzle, n = pz.size, ts = px / n, solved = pz.solved(), info = PUZZLE_INFO[P2.kind];
       let tiles = "", side = "";
       if (P2.kind === "sliding") {
+        const hm = pz.hintMark;
         tiles = pz.tiles.map((t, i) => {
-          if (t < 0) return `<div class="pt empty"></div>`;
+          const hc = hm ? hm.from === i ? " hint-from" : hm.to === i ? " hint-to" : "" : "";
+          if (t < 0) return `<div class="pt empty${hc}"></div>`;
           const tx = t % n * ts, ty = Math.floor(t / n) * ts;
-          return `<button class="pt ${pz.canMove(i) ? "mv" : ""}" data-action="ptile" data-i="${i}" style="background-image:url(${P2.img});background-position:-${tx}px -${ty}px;background-size:${px}px ${px}px"><span>${t + 1}</span></button>`;
+          return `<button class="pt ${pz.canMove(i) ? "mv" : ""}${hc}" data-action="ptile" data-i="${i}" style="background-image:url(${P2.img});background-position:-${tx}px -${ty}px;background-size:${px}px ${px}px"><span>${t + 1}</span></button>`;
         }).join("");
         const ref = compact ? Math.max(70, Math.floor(px * 0.42)) : 150;
         side = `<small>완성 그림</small><img src="${P2.img}" width="${ref}" height="${ref}" alt="reference">`;
       } else if (P2.kind === "lights") {
-        tiles = pz.on.map((v, i) => `<button class="pt light ${v ? "on" : ""}" data-action="ptile" data-i="${i}"></button>`).join("");
+        tiles = pz.on.map((v, i) => `<button class="pt light ${v ? "on" : ""} ${pz.hintMark === i ? "hint" : ""}" data-action="ptile" data-i="${i}"></button>`).join("");
         side = `<small>켜진 불 ${pz.on.filter(Boolean).length}개</small><div class="lhint">누른 칸 + 상하좌우 반전</div>`;
       } else if (P2.kind === "sudoku") {
         const bad = Array(16).fill(false), cells = pz.cells;
@@ -7702,7 +7800,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         for (const [br, bc] of [[0, 0], [0, 2], [2, 0], [2, 2]]) groups.push([br * 4 + bc, br * 4 + bc + 1, (br + 1) * 4 + bc, (br + 1) * 4 + bc + 1]);
         for (const g of groups) for (const i of g) if (cells[i] && g.some((j) => j !== i && cells[j] === cells[i])) bad[i] = true;
         const filled = cells.filter(Boolean).length, nBad = bad.filter(Boolean).length;
-        tiles = cells.map((v, i) => `<button class="pt sd ${pz.given[i] ? "given" : ""} ${bad[i] ? "bad" : ""} ${Math.floor(i / 4) < 2 === i % 4 < 2 ? "b1" : "b2"}" data-action="ptile" data-i="${i}" ${pz.given[i] ? "disabled" : ""}>${v || ""}</button>`).join("");
+        tiles = cells.map((v, i) => {
+          var _a5;
+          return `<button class="pt sd ${pz.given[i] ? "given" : ""} ${((_a5 = pz.hinted) == null ? void 0 : _a5[i]) ? "hinted" : ""} ${bad[i] ? "bad" : ""} ${Math.floor(i / 4) < 2 === i % 4 < 2 ? "b1" : "b2"}" data-action="ptile" data-i="${i}" ${pz.given[i] ? "disabled" : ""}>${v || ""}</button>`;
+        }).join("");
         side = `<small>빈칸을 누르면 1→2→3→4→빈칸</small><div class="lhint">행·열·2×2 상자에<br>1~4 가 하나씩</div>
         ${nBad ? `<div class="lhint bad">겹치는 숫자 ${nBad}칸 (빨강)</div>` : filled === 16 ? "" : `<div class="lhint">남은 빈칸 ${16 - filled}</div>`}
         <button class="ghost small" data-action="puzzle-reset">내가 쓴 숫자 지우기</button>`;
@@ -7713,7 +7814,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       <div class="prow">
         <div class="pgrid k-${P2.kind}" style="grid-template-columns:repeat(${n},${ts}px);width:${px}px;height:${px}px">${tiles}</div>
         <div class="pref">${side}
-          ${solved ? '<b class="ok">✨ 보물!</b>' : ""}<button class="${compact ? "" : "big"} ${solved ? "" : "alt"}" data-action="puzzle-close">${solved ? "보물을 받는다" : "나가기 (Esc)"}</button></div>
+          ${solved ? '<b class="ok">✨ 보물!</b>' : `<button class="ghost small hintbtn" data-action="puzzle-hint" ${(pz.hintsUsed || 0) >= HINT_MAX ? "disabled" : ""}>💡 힌트 ${HINT_MAX - (pz.hintsUsed || 0)}/${HINT_MAX}</button>`}
+          <button class="${compact ? "" : "big"} ${solved ? "" : "alt"}" data-action="puzzle-close">${solved ? "보물을 받는다" : "나가기 (Esc)"}</button></div>
       </div>
     </div>`);
       if (solved && !P2.done) {
@@ -7741,7 +7843,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         { icon: "🌫️", title: "재의 마을", body: `산 아래 작은 마을에 어느 날 <b>저주 안개</b>가 내려앉았다.<br>안개는 사람들을 삼켜 산속 던전 깊은 곳으로 끌고 갔고, 남은 이들은 마을을 떠났다.<br><br>당신은 남기로 했다. 검과 마법, 그리고 몸으로 익힌 것만 믿고 안개의 근원을 향해 내려간다.` },
         { icon: "🏔️", title: "99층 아래, 안개의 심장", body: `던전은 <b>99층</b>이다. 층마다 미로처럼 방이 얽혀 있고, 매번 모양이 바뀐다.<br>10층마다 <b>보스</b>가 길을 막고, 그 뒤에는 <b>안식처</b>가 있어 쉬고, 창고를 쓰고, 기록을 남길 수 있다.<br><br>층 어딘가에는 <b>갇힌 주민</b>이 있다. 구출하면 안식처 모닥불 곁에 모여든다.<br>가장 깊은 곳의 <b>안개의 심장</b>을 부수는 것이 이 여정의 끝이다.` },
         { icon: "⚔️", title: "행동이 곧 성장", body: `이 게임에는 레벨업 버튼이 없다.<br>· <b>때리면 힘</b>이, <b>피하면 민첩</b>이, <b>맞거나 막으면 체력</b>이, <b>마법을 쓰면 마력</b>이 조금씩 오른다.<br>· 스탯이 쌓이면 당신의 싸움 방식대로 <b>직업</b>이 정해지고 궁극기가 열린다.<br>· 방 3개를 돌파할 때마다 <b>스킬 포인트</b>를 얻어 스킬을 고른다(저축 최대 3, 총 40회).<br>· 몬스터는 <b>재료와 레시피</b>를 떨어뜨린다. 장비는 오직 <b>제작</b>으로만 얻는다. 무기에는 저절로 발동하는 힘이 깃들어 있다.<br>· <b>짙은 안개 방</b>에는 몬스터 대신 <b>함정</b>과 <b>봉인 제단</b>이 있다. 퍼즐(그림 맞추기·불 끄기·미니 스도쿠)을 풀면 <b>상급 재료와 레시피</b>를 얻는다(선택).` },
-        { icon: touch2 ? "📱" : "⌨️", title: "조작", body: touch2 ? `왼쪽 화면 <b>아무 곳이나 누르면 조이스틱</b>이 생긴다. 오른쪽은 <b>공격·방어·회피·점프·물약</b>.<br><b>스킬 1~4</b> 버튼으로 스킬을 쓰고, <b>마법</b> 버튼을 켜면 공격 버튼이 마법(마력탄·마법 커맨드)이 된다.<br>조이스틱을 톡톡 튕긴 뒤 공격을 누르면 커맨드 스킬도 나간다(예: ↓ → 공격).<br>적이 없을 때 문·상자·제단·사람 앞에 서면 <b>공격 버튼이 입장·열기·퍼즐·대화</b>로 바뀐다. 위쪽 <b>≡ 메뉴</b>에 스킬·가방·지도, <b>미니맵</b>을 누르면 지도.` : `<b>W A S D</b> 이동 · <b>J</b> 공격(연타 콤보) · <b>K</b> 마법 공격(마력탄) · <b>L</b> 방어 · <b>Shift</b> 회피 · <b>Space</b> 점프<br><b>↑+J 올려치기</b>로 적을 띄우고 <b>J</b>로 공중에서 이어 때린 뒤 <b>↓+J 내려찍기</b>. 적의 <b>붉은 예고(!)</b> 직전에 <b>L</b>을 누르면 흘리기 — 다음 J가 강한 반격.<br>물리 스킬: 방향 조합 + <b>J</b> (예: S D J = ↓→ 강타). 마법 스킬: 방향 조합 + <b>K</b>. <b>→(D)는 바라보는 방향</b>. 단축 스킬 1~4.<br><b>F</b> 상호작용 · <b>Q</b> 물약 · <b>T</b> 스킬창 · <b>I</b> 가방 · <b>M</b> 지도` }
+        { icon: touch2 ? "📱" : "⌨️", title: "조작", body: touch2 ? `왼쪽 화면 <b>아무 곳이나 누르면 조이스틱</b>이 생긴다. 오른쪽은 <b>공격·방어·회피·점프·물약</b>.<br><b>스킬 1~4</b> 버튼으로 스킬을 쓰고, <b>마법</b> 버튼을 켜면 공격 버튼이 마법(마력탄·마법 커맨드)이 된다.<br>조이스틱을 톡톡 튕긴 뒤 공격을 누르면 커맨드 스킬도 나간다(예: ↓ → 공격).<br>적이 없을 때 문·상자·제단·사람 앞에 서면 <b>공격 버튼이 입장·열기·퍼즐·대화</b>로 바뀐다. 위쪽 <b>≡ 메뉴</b>에 스킬·가방·지도, <b>미니맵</b>을 누르면 지도.` : `<b>W A S D</b> 이동 · <b>J</b> 공격(연타 콤보) · <b>K</b> 마법 공격(마력탄) · <b>L</b> 방어 · <b>Shift</b> 회피 · <b>Space</b> 점프<br><b>↑+J 올려치기</b>로 적을 띄우고 <b>J</b>로 공중에서 이어 때린 뒤 <b>↓+J 내려찍기</b>. 적의 <b>붉은 예고(!)</b> 직전에 <b>L</b>을 누르면 흘리기 — 다음 J가 강한 반격.<br>물리 스킬: 방향 조합 + <b>J</b> (예: S D J = ↓→ 강타). 마법 스킬: 방향 조합 + <b>K</b>. <b>→(D)는 바라보는 방향</b>. 단축 스킬 1~4.<br>적이 없을 때 문·상자·제단·사람 앞에서 <b>J</b> = 상호작용 · <b>Q</b> 물약 · <b>T</b> 스킬창 · <b>I</b> 가방 · <b>M</b> 지도` }
       ];
       const p = pages[Math.min(page, pages.length - 1)], last2 = page >= pages.length - 1, st = thenStart ? "1" : "0";
       this.show("intro", `<div class="win intro">
