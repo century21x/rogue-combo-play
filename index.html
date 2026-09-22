@@ -243,6 +243,12 @@ body.mobile .footer { display: none; }
 .intro-dots i.on { background: var(--gold); }
 button.big.ghost { background: transparent; border-color: var(--line); font-size: 15px; padding: 10px 20px; }
 
+/* 타이틀 메뉴 / 저장 슬롯 */
+.win.title.menu .menu-list { display: flex; flex-direction: column; gap: 10px; max-width: 360px; margin: 16px auto 10px; }
+.win.title.menu .menu-list .big { width: 100%; }
+.slotname { color: var(--gold); }
+.panel-load .win, .panel-save .win, .panel-settings .win { max-width: 560px; }
+
 </style>
   <script>
     // 어떤 기기에서든 오류가 나면 화면에 표시 (테스터가 캡처해서 보낼 수 있게)
@@ -260,7 +266,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     <div id="ui"></div>
     <div id="rotate-hint">📱 가로로 돌려주세요</div>
   </div>
-  <p class="footer">v0.1.0 (2026-09-19) · WASD 이동 · J 공격 · ↑J 올려치기 · ↓J 내려찍기 · L 흘리기 · K 마법 공격 · L 방어 · Shift 회피 · Space 점프 · 방향 조합+J 물리 스킬 / +K 마법 스킬(→=앞) · 1~4 단축 · 문·상자·사람 앞에서 J · Q 물약 · T 스킬 · I 가방 · M 지도 · F3 디버그 · <button id="touch-toggle" class="linkbtn">📱 터치 조작 표시</button></p>
+  <p class="footer">v0.1.0 (2026-09-22) · WASD 이동 · J 공격 · ↑J 올려치기 · ↓J 내려찍기 · L 흘리기 · K 마법 공격 · L 방어 · Shift 회피 · Space 점프 · 방향 조합+J 물리 스킬 / +K 마법 스킬(→=앞) · 1~4 단축 · 문·상자·사람 앞에서 J · Q 물약 · T 스킬 · I 가방 · M 지도 · F3 디버그 · <button id="touch-toggle" class="linkbtn">📱 터치 조작 표시</button></p>
   <script>
 (() => {
   // src/core/EventBus.js
@@ -2255,6 +2261,16 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           this.rescue = jail;
         }
       }
+      if (opts.midSanctuary) {
+        const cand = normal.filter((c) => !c.fog && c.type !== "rescue" && dist.get(c.id) >= 2 && c !== escape);
+        const s = cand.length ? pick(rng, cand) : null;
+        if (s) {
+          s.type = "sanctuary";
+          s.cleared = true;
+          this.sanctuary = s;
+          this.isMid = true;
+        }
+      }
       const dGoal = this.bfs(goal);
       for (const c of this.cells) for (const d of this.openings(c)) {
         const n = this.neighbor(c, d);
@@ -2310,6 +2326,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const band = Math.floor(i / 10) + 1;
       const params = floorParams(i, this.opts);
       if (this.rescueFloorOf(band) === i) params.rescue = npcForBand(band).id;
+      if ((i + 1) % 5 === 0) params.midSanctuary = true;
       return new Floor(i, mulberry32(this.floorSeed(i)), params);
     }
     /** 안개 셀은 퍼즐을 풀기 전까지 기록되지 않는다 (C1: 풀면 기록) */
@@ -2380,40 +2397,50 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
   };
 
   // src/systems/Save.js
-  var KEY = "g1.save.v2";
+  var KEY_AUTO = "g1.save.v2";
+  var keyOf = (slot) => !slot || slot === "auto" ? KEY_AUTO : `g1.save.slot.${slot}`;
+  var SAVE_SLOTS = ["auto", "1", "2", "3"];
   var SaveSystem = {
-    has() {
+    read(slot = "auto") {
       var _a4;
       try {
-        return !!((_a4 = globalThis.localStorage) == null ? void 0 : _a4.getItem(KEY));
-      } catch {
-        return false;
-      }
-    },
-    peek() {
-      var _a4;
-      try {
-        const r = (_a4 = globalThis.localStorage) == null ? void 0 : _a4.getItem(KEY);
+        const r = (_a4 = globalThis.localStorage) == null ? void 0 : _a4.getItem(keyOf(slot));
         return r ? JSON.parse(r) : null;
       } catch {
         return null;
       }
     },
-    write(data) {
+    peek() {
+      return this.read("auto");
+    },
+    has(slot = "auto") {
+      return !!this.read(slot);
+    },
+    hasAny() {
+      return SAVE_SLOTS.some((s) => this.has(s));
+    },
+    write(data, slot = "auto") {
       var _a4;
       try {
-        (_a4 = globalThis.localStorage) == null ? void 0 : _a4.setItem(KEY, JSON.stringify({ v: 2, savedAt: Date.now(), ...data }));
+        (_a4 = globalThis.localStorage) == null ? void 0 : _a4.setItem(keyOf(slot), JSON.stringify({ v: 2, savedAt: Date.now(), slot, ...data }));
         return true;
       } catch {
         return false;
       }
     },
-    clear() {
+    remove(slot = "auto") {
       var _a4;
       try {
-        (_a4 = globalThis.localStorage) == null ? void 0 : _a4.removeItem(KEY);
+        (_a4 = globalThis.localStorage) == null ? void 0 : _a4.removeItem(keyOf(slot));
       } catch {
       }
+    },
+    clear() {
+      this.remove("auto");
+    },
+    /** 슬롯 목록 [{ slot, data|null }] */
+    list() {
+      return SAVE_SLOTS.map((slot) => ({ slot, data: this.read(slot) }));
     }
   };
 
@@ -3127,7 +3154,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
   var STARTER_RECIPES = ["rusty_sword", "leather_armor", "hp_potion"];
   var RECIPE_LIMIT = 20;
   var BAG_BASE = 30;
-  var BAG_PER_SANCTUARY = 20;
+  var BAG_PER_SANCTUARY = 10;
   var BAG_MAX = 300;
   var STACK_MAX = 999;
   var CRAFTABLE = Object.keys(ITEMS).filter((id) => ITEMS[id].needs);
@@ -5231,6 +5258,25 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           glow.addColorStop(1, "rgba(255,170,60,0)");
           ctx.fillStyle = glow;
           ctx.fillRect(o.x - 140, o.y - 160, 280, 200);
+        } else if (o.kind === "stone") {
+          ctx.fillStyle = "#3e3e52";
+          ctx.beginPath();
+          ctx.roundRect(o.x - 16, o.y - 56, 32, 56, [10, 10, 4, 4]);
+          ctx.fill();
+          ctx.fillStyle = "rgba(0,0,0,0.25)";
+          ctx.fillRect(o.x + 8, o.y - 50, 6, 46);
+          ctx.strokeStyle = `rgba(224,184,90,${0.55 + Math.sin(t * 3) * 0.3})`;
+          ctx.lineWidth = 2;
+          ctx.shadowColor = "#e0b85a";
+          ctx.shadowBlur = 10;
+          ctx.beginPath();
+          ctx.arc(o.x - 1, o.y - 36, 8, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(o.x - 1, o.y - 50);
+          ctx.lineTo(o.x - 1, o.y - 18);
+          ctx.stroke();
+          ctx.shadowBlur = 0;
         } else if (o.kind === "storage") {
           ctx.fillStyle = "#2f4a7a";
           ctx.fillRect(o.x - 30, o.y - 40, 60, 40);
@@ -6607,6 +6653,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.player = null;
       this.hitStop = 0;
       this.settings = { shake: true };
+      try {
+        Object.assign(this.settings, JSON.parse(localStorage.getItem("g1.settings.v1") || "{}"));
+      } catch {
+      }
       this.comboGrade = "";
       this.comboBest = 0;
       this.bindEvents();
@@ -6714,6 +6764,19 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         bagGrants: this.bagGrants.slice()
       };
     }
+    /** 기록석 수동 저장 (슬롯 1~3) */
+    saveTo(slot) {
+      const ok = SaveSystem.write(this.serialize(), slot);
+      this.message(ok ? `슬롯 ${slot} 에 저장했다 — ${this.dungeon.floorIndex + 1}층 안식처` : "저장 실패 (브라우저 저장소 사용 불가)", ok ? "#7CFC00" : "#ff6b6b");
+      if (ok) this.ui.toast("저장 완료", `슬롯 ${slot}`);
+      return ok;
+    }
+    saveSettings() {
+      try {
+        localStorage.setItem("g1.settings.v1", JSON.stringify(this.settings));
+      } catch {
+      }
+    }
     checkpoint() {
       const ok = SaveSystem.write(this.serialize());
       this.message(ok ? `체크포인트 저장 — ${this.dungeon.floorIndex + 1}층 안식처` : "저장 실패 (브라우저 저장소 사용 불가)", ok ? "#7CFC00" : "#ff6b6b");
@@ -6735,8 +6798,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.bagGrants = (d.bagGrants || []).slice();
       this.dungeon.regen = { ...d.regen || {} };
       const f = this.dungeon.getFloor(d.floorIndex);
-      if (f.isBoss && f.sanctuary) {
-        f.cells[0].cleared = true;
+      if (f.sanctuary) {
+        if (f.isBoss) f.cells[0].cleared = true;
         this.dungeon.goToFloor(d.floorIndex, f.sanctuary.id);
       } else this.dungeon.goToFloor(d.floorIndex);
       this.player.derived = this.computeDerived();
@@ -7035,14 +7098,17 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       return got;
     }
     enterSanctuary(cell) {
-      const r = this.room, w = r.width;
+      const r = this.room, w = r.width, mid = !this.dungeon.isBossFloor;
       r.props = [
         { kind: "campfire", x: w * 0.3, y: 440, label: "모닥불" },
-        { kind: "storage", x: w * 0.48, y: 400, label: "창고" },
-        { kind: "craft", x: w * 0.64, y: 460, label: "제작대" }
+        { kind: "storage", x: w * 0.46, y: 400, label: "창고" },
+        { kind: "craft", x: w * 0.6, y: 460, label: "제작대" },
+        { kind: "stone", x: w * (mid ? 0.76 : 0.72), y: 410, label: "기록석" }
       ];
-      r.stairs = { x: w * 0.84, y: 380 };
-      r.portal = { x: w * 0.15, y: 380 };
+      if (!mid) {
+        r.stairs = { x: w * 0.88, y: 380 };
+        r.portal = { x: w * 0.15, y: 380 };
+      }
       this.rescued.forEach((id, i) => {
         const n = NPC_BY_ID[id];
         if (!n) return;
@@ -7065,7 +7131,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       this.checkpoint();
       const band = Math.floor(this.dungeon.floorIndex / BALANCE.dungeon.bandSize) + 1;
-      this.after(0.6, () => this.ui.showSanctuaryPrompt({ floor: this.dungeon.floorIndex + 1, bands: band }));
+      this.after(0.6, () => this.ui.showSanctuaryPrompt({ floor: this.dungeon.floorIndex + 1, bands: band, revisit: !mid }));
     }
     scaledDef(id, floorIdx) {
       const d = ENEMIES[id], sc = BALANCE.scaling;
@@ -7405,7 +7471,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (r.chest && !r.chest.opened) add(r.chest, "열기", () => this.openChest());
       if (r.altar && !r.altar.claimed) add(r.altar, "퍼즐", () => this.openAltar(), 80);
       if (r.cage && !r.cage.opened && r.cleared) add(r.cage, "구출", () => this.openCage(), 80);
-      const PL = { npc: "대화", storage: "창고", craft: "제작", campfire: "휴식" };
+      const PL = { npc: "대화", storage: "창고", craft: "제작", campfire: "휴식", stone: "저장" };
       for (const o of r.props) {
         if (o.breakable) continue;
         add(o, PL[o.kind] || "사용", () => this.useProp(o), 70);
@@ -7470,7 +7536,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         const w = ((_a4 = r.waves) == null ? void 0 : _a4.length) || 0;
         return `남은 적 ${alive}${w ? ` · 다음 무리 ${w}` : ""}`;
       }
-      if (r.cell.type === "sanctuary") return "쉬고, 창고를 쓰고, 계단으로";
+      if (r.cell.type === "sanctuary") return this.dungeon.isBossFloor ? "쉬고, 기록석에 저장하고, 계단으로" : "쉼터 — 기록석에 저장하고 문으로 계속";
       if (r.stairs) return "계단으로 내려가라";
       if (r.portal) return "귀환 포탈 — 던전을 떠날 수 있다";
       if (r.altar && !r.altar.claimed) return "제단의 퍼즐 (선택)";
@@ -7531,6 +7597,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         return;
       }
       if (o.kind === "storage") this.ui.toggle("storage");
+      else if (o.kind === "stone") this.ui.showSave();
       else if (o.kind === "craft") this.ui.toggle("inventory");
       else if (o.kind === "campfire") {
         this.healPlayer(1);
@@ -8089,7 +8156,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
   };
 
   // src/ui/UI.js
-  var PANELS = ["title", "select", "reward", "skills", "inventory", "map", "end", "toast", "storage", "sanctuary", "puzzle", "recipe", "intro"];
+  var PANELS = ["load", "save", "settings", "title", "select", "reward", "skills", "inventory", "map", "end", "toast", "storage", "sanctuary", "puzzle", "recipe", "intro"];
   var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   var UI = class {
     constructor(root, game2) {
@@ -8259,6 +8326,51 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           this.hide("title");
           if (!g.loadRun(SaveSystem.peek())) this.showTitle();
           break;
+        case "load-menu":
+          this.showLoad();
+          break;
+        case "load-slot": {
+          const d = SaveSystem.read(el.dataset.slot);
+          this.hide("load");
+          if (!g.loadRun(d)) this.showTitle();
+          break;
+        }
+        case "load-del":
+          if (window.confirm(`${this.slotLabel(el.dataset.slot)} 을(를) 삭제할까요?`)) {
+            SaveSystem.remove(el.dataset.slot);
+            this.showLoad();
+          }
+          break;
+        case "save-slot": {
+          const slot = el.dataset.slot;
+          if (SaveSystem.has(slot) && !window.confirm(`${this.slotLabel(slot)} 을(를) 덮어쓸까요?`)) break;
+          g.saveTo(slot);
+          this.renderSave();
+          break;
+        }
+        case "controls-menu":
+          this.hide("title");
+          this.showIntro(3, false);
+          break;
+        case "settings-menu":
+          this.showSettings();
+          break;
+        case "toggle-shake":
+          g.settings.shake = !g.settings.shake;
+          g.saveSettings();
+          this.showSettings();
+          break;
+        case "toggle-touch": {
+          const t = document.getElementById("touch");
+          if (t) t.hidden = !t.hidden;
+          this.showSettings();
+          break;
+        }
+        case "back-title":
+          this.hide("load");
+          this.hide("settings");
+          this.showTitle();
+          break;
         case "store":
           g.inv.store(el.dataset.id, el.dataset.n === "all" ? Infinity : 1);
           break;
@@ -8302,45 +8414,76 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     // ── 화면들 ──────────────────────────────────────────────
     showTitle() {
+      const any = SaveSystem.hasAny();
       this.show("title", `
-      <div class="win title">
+      <div class="win title menu">
         <h1>ROGUE COMBO</h1>
-        <p class="small">${true ? "v0.1.0 (2026-09-19)" : "dev"} · 프로토타입 테스트 빌드</p>
-        <p class="sub">행동 기반 성장 · 커맨드 콤보 · 미로 던전 — 2D 횡스크롤 액션 로그라이크 프로토타입</p>
-        <div class="controls">
-          <div><b>이동</b> W A S D</div><div><b>공격</b> J (연타 3콤보)</div><div><b>마법 공격</b> K (마력탄, MP 소모)</div>
-          <div><b>올려치기</b> ↑+J → 공중 J 추가타 → <b>내려찍기</b> ↓+J</div><div><b>흘리기</b> 붉은 예고(!) 직전 L → J 강한 반격</div>
-          <div><b>방어</b> L (유지)</div><div><b>회피</b> Shift</div><div><b>점프</b> Space</div>
-          <div><b>물리 스킬</b> 방향 조합 + J (예: S D J)</div><div><b>마법 스킬</b> 방향 조합 + K (예: S D K)</div><div><b>단축 스킬</b> 1 2 3 4</div>
-          <div><b>상호작용</b> 적이 없을 때 문·상자·사람 앞에서 J</div><div><b>물약</b> Q</div><div><b>창</b> T 스킬 · I 가방 · M 지도</div>
-        </div>
-        <p class="note">스탯은 행동으로만 오릅니다 — 때리면 힘, 피하면 민첩, 맞거나 막으면 체력, 마법을 쓰면 마력.<br>커맨드의 <b>→</b>는 <b>바라보는 방향(앞)</b>입니다. 왼쪽을 볼 때 ↓←+J 는 오른쪽을 볼 때 ↓→+J 와 같은 스킬입니다.</p>
-        <div class="row">
+        <p class="small">${true ? "v0.1.0 (2026-09-22)" : "dev"} · 프로토타입 테스트 빌드</p>
+        <p class="sub">행동 기반 성장 · 커맨드 콤보 · 미로 던전 — 2D 횡스크롤 액션 로그라이크</p>
+        <div class="menu-list">
           <button class="big" data-action="start">새 게임</button>
+          <button class="big alt" data-action="load-menu" ${any ? "" : "disabled"}>불러오기${any ? "" : " — 저장된 게임 없음"}</button>
           <button class="big ghost" data-action="intro">게임 소개</button>
-          ${(() => {
-        var _a4, _b;
-        const sv = SaveSystem.peek();
-        return sv ? `<button class="big alt" data-action="continue">이어하기 — ${(sv.floorIndex || 0) + 1}층 안식처 · ${esc(((_b = JOB_BY_ID[(_a4 = sv.jobs) == null ? void 0 : _a4.id]) == null ? void 0 : _b.name) || "무직")}</button>` : "";
-      })()}
+          <button class="big ghost" data-action="controls-menu">조작법</button>
+          <button class="big ghost" data-action="settings-menu">설정</button>
         </div>
+        <p class="note">스탯은 행동으로만 오릅니다 — 때리면 힘, 피하면 민첩, 맞거나 막으면 체력, 마법을 쓰면 마력.<br>안식처(5층마다)의 <b>기록석</b>에서 저장할 수 있고, 안식처에 들어가면 자동 저장됩니다.</p>
       </div>`);
     }
+    slotLabel(slot) {
+      return slot === "auto" ? "자동 저장" : `슬롯 ${slot}`;
+    }
+    slotInfo(d) {
+      var _a4, _b;
+      if (!d) return '<span class="dim">비어 있음</span>';
+      const m = Math.floor((d.time || 0) / 60), when = d.savedAt ? new Date(d.savedAt).toLocaleString("ko-KR", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" }) : "";
+      return `<b>${(d.floorIndex || 0) + 1}층 안식처</b> · ${esc(((_b = JOB_BY_ID[(_a4 = d.jobs) == null ? void 0 : _a4.id]) == null ? void 0 : _b.name) || "무직")} · 플레이 ${m}분 · 처치 ${d.kills || 0} <small class="dim">${when}</small>`;
+    }
+    /** 불러오기 메뉴 (타이틀 / 결과 화면에서) */
+    showLoad() {
+      this.hide("title");
+      this.hide("end");
+      const rows = SaveSystem.list().map(({ slot, data }) => `<div class="item"><span><b class="slotname">${this.slotLabel(slot)}</b><br>${this.slotInfo(data)}</span><span class="acts">
+      ${data ? `<button data-action="load-slot" data-slot="${slot}">불러오기</button><button class="x" data-action="load-del" data-slot="${slot}" title="삭제">✕</button>` : ""}</span></div>`).join("");
+      this.show("load", `<div class="win"><h2>📂 불러오기</h2><p class="sub">저장한 안식처에서 이어서 시작합니다.</p><div class="items">${rows}</div>
+      <div class="row"><button class="big ghost" data-action="back-title">돌아가기</button></div></div>`);
+    }
+    /** 기록석 저장 창 (안식처) */
+    showSave() {
+      this.open.add("save");
+      this.game.paused = true;
+      this.renderSave();
+    }
+    renderSave() {
+      const g = this.game;
+      const rows = SaveSystem.list().map(({ slot, data }) => `<div class="item"><span><b class="slotname">${this.slotLabel(slot)}</b><br>${this.slotInfo(data)}</span><span class="acts">
+      ${slot === "auto" ? '<small class="dim">안식처 진입 시 자동</small>' : `<button data-action="save-slot" data-slot="${slot}">${data ? "덮어쓰기" : "저장"}</button>`}</span></div>`).join("");
+      this.show("save", `<div class="win">${this.header("기록석 — 저장", "save", `${g.dungeon.floorIndex + 1}층 안식처 · ${esc(g.jobs.current.name)}`)}
+      <p class="sub">현재 진행을 슬롯에 기록합니다. 타이틀의 <b>불러오기</b>에서 이어서 시작할 수 있습니다.</p><div class="items">${rows}</div></div>`);
+    }
+    showSettings() {
+      var _a4;
+      this.hide("title");
+      const st = this.game.settings;
+      this.show("settings", `<div class="win"><h2>⚙️ 설정</h2><div class="items">
+      <div class="item"><span><b>화면 흔들림</b><br><small class="dim">타격·충격파 때 화면이 흔들립니다</small></span><button data-action="toggle-shake">${st.shake ? "켬" : "끔"}</button></div>
+      <div class="item"><span><b>터치 조작 표시</b><br><small class="dim">PC 에서도 터치 버튼을 표시</small></span><button data-action="toggle-touch">${((_a4 = document.getElementById("touch")) == null ? void 0 : _a4.hidden) ? "끔" : "켬"}</button></div>
+      </div><div class="row"><button class="big ghost" data-action="back-title">돌아가기</button></div></div>`);
+    }
     /** 안식처 진입 시: 다음 층 / 이전 구간 재탐험 */
-    showSanctuaryPrompt({ floor, bands }) {
+    showSanctuaryPrompt({ floor, bands, revisit = true }) {
       const size = BALANCE.dungeon.bandSize;
       const opts = [];
-      for (let b = 1; b <= bands; b++) opts.push(`<button data-action="sanct-revisit" data-band="${b}">${(b - 1) * size + 1}~${Math.min(b * size, 99)}층 다시 탐험</button>`);
+      if (revisit) for (let b = 1; b <= bands; b++) opts.push(`<button data-action="sanct-revisit" data-band="${b}">${(b - 1) * size + 1}~${Math.min(b * size, 99)}층 다시 탐험</button>`);
       this.show("sanctuary", `<div class="win">
-      <h2>🏕️ ${floor}층 안식처</h2>
+      <h2>🏕️ ${floor}층 ${revisit ? "안식처" : "쉼터"}</h2>
       ${this.game.rescued.length ? `<p class="note">구출한 사람들: ${this.game.rescued.map((id) => {
         var _a4;
         return esc(((_a4 = NPC_BY_ID[id]) == null ? void 0 : _a4.name) || id);
       }).join(" · ")}</p>` : '<p class="note dim">아직 구출한 사람이 없다. 각 10층 구간 어딘가에 감옥 방이 있다.</p>'}
-      <p class="sub">체크포인트가 저장되었습니다. 모닥불·창고·제작대를 이용하고 계단으로 내려가거나, 이전 구간을 다시 탐험할 수 있습니다.<br>다시 탐험하면 그 구간의 방 배치와 몬스터가 모두 새로 섞입니다.</p>
-      <div class="row"><button class="big" data-action="sanct-next">이곳에 머물기 / 다음 층으로</button></div>
-      <h3>이전 구간 재탐험</h3>
-      <div class="row wrap">${opts.join("")}</div>
+      <p class="sub">자동 저장되었습니다. 모닥불·창고·제작대를 이용하고, <b>기록석</b>에서 슬롯에 저장할 수 있습니다.${revisit ? "<br>계단으로 내려가거나 이전 구간을 다시 탐험할 수 있습니다. 다시 탐험하면 그 구간의 방 배치와 몬스터가 모두 새로 섞입니다." : "<br>쉼터에는 계단이 없습니다. 문으로 계속 나아가세요."}</p>
+      <div class="row"><button class="big" data-action="sanct-next">${revisit ? "이곳에 머물기 / 다음 층으로" : "계속"}</button></div>
+      ${revisit ? `<h3>이전 구간 재탐험</h3><div class="row wrap">${opts.join("")}</div>` : ""}
     </div>`);
     }
     /** 봉인 제단 퍼즐 (D1: 그림 맞추기 · 불 끄기 · 미니 스도쿠) */
@@ -8500,7 +8643,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           <div><h3>최종 직업</h3><p><b>${esc(s.job.name)}</b></p><h3>스탯</h3><ul>${stats}</ul></div>
           <div><h3>기록</h3><ul><li>도달 층: ${s.depth}</li><li>방문 방: ${s.rooms}</li><li>처치: ${s.kills}</li><li>스킬 픽: ${s.picks}</li><li>시간: ${m}분 ${sec}초</li></ul><h3>스킬</h3><p class="small">${skills}</p></div>
         </div>
-        <button class="big" data-action="restart">다시 도전</button>
+        <div class="row"><button class="big" data-action="restart">다시 도전</button>${SaveSystem.hasAny() ? '<button class="big alt" data-action="load-menu">불러오기</button>' : ""}</div>
       </div>`);
     }
     toast(title, sub) {
@@ -8980,8 +9123,10 @@ ${n}`;
     for (const btn of game.renderer.hudButtons || []) {
       if (!inside(btn)) continue;
       e.preventDefault();
-      if (btn.act === "shake") game.settings.shake = !game.settings.shake;
-      else if (btn.act === "pause") ui.isAnyOpen() ? ui.closeAll() : ui.toggle("map");
+      if (btn.act === "shake") {
+        game.settings.shake = !game.settings.shake;
+        game.saveSettings();
+      } else if (btn.act === "pause") ui.isAnyOpen() ? ui.closeAll() : ui.toggle("map");
       return;
     }
   });
