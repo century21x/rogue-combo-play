@@ -98,6 +98,15 @@ table.stats td.pb i { display: block; height: 6px; background: var(--gold); bord
 .pslot small { font-size: 9px; color: var(--dim); max-width: 58px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pslot.on { border: 2px solid var(--gold); box-shadow: 0 0 10px rgba(255,215,0,0.4); }
 .pslot.on small { color: #fff; }
+.pslot .dur { position: absolute; left: 12px; right: 12px; bottom: 6px; height: 3px; background: rgba(0,0,0,0.5); border-radius: 2px; overflow: hidden; }
+.pslot .dur i { display: block; height: 100%; background: var(--pass); }
+.pslot .dur.low i { background: #ffb347; } .pslot .dur.broken { background: #ff6a5a; }
+.win .bad { color: #ff6a5a; }
+.win .gold { color: #e0b85a; }
+.win .plus { color: #ffd700; }
+.win .tabs { margin: 4px 0 8px; gap: 6px; }
+.win .tabs button.sel { border-color: var(--gold); color: var(--gold); }
+.mc.ch { opacity: 0.6; }
 .pslot.s-weapon { left: 6px; top: 40px; } .pslot.s-armor { right: 6px; top: 40px; } .pslot.s-accessory { right: 6px; bottom: 8px; }
 .pdesc { font-size: 12px; margin-top: 8px; } .pdesc small { color: var(--dim); }
 .eq .lbl { color: var(--dim); width: 52px; }
@@ -122,6 +131,18 @@ table.stats td.pb i { display: block; height: 6px; background: var(--gold); bord
 .mc.u { opacity: 0.12; }
 .win header .hint span.on { color: var(--gold); font-weight: bold; }
 
+.win textarea.code { width: 100%; min-height: 110px; box-sizing: border-box; font: 11px/1.4 ui-monospace, Consolas, monospace; color: #e8e6de; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; padding: 8px; word-break: break-all; resize: vertical; user-select: text; -webkit-user-select: text; }
+.win .ok { color: var(--pass); }
+.panel-code .win { max-width: 600px; }
+.tipcard { position: absolute; left: 16px; top: 34%; max-width: 300px; pointer-events: auto; background: rgba(14,18,36,0.92); border: 1px solid var(--gold); border-left-width: 4px; border-radius: 10px; padding: 10px 14px 8px; font-size: 13px; line-height: 1.5; color: #e8e6de; box-shadow: 0 4px 18px rgba(0,0,0,0.5); animation: pop 0.25s ease-out; }
+.tipcard[hidden] { display: none; }
+@media (max-height: 520px) { .tipcard { left: auto; right: 12px; top: 108px; max-width: 250px; font-size: 12px; padding: 7px 10px 6px; } }
+.tipcard .tt { display: flex; align-items: center; gap: 8px; font-weight: 700; color: var(--gold); margin-bottom: 2px; }
+.tipcard .tt small { margin-left: auto; font-weight: 400; color: #8f8a7a; font-size: 10px; }
+.tipcard b { color: #fff; }
+.tipcard.done { border-color: var(--pass); }
+.tipcard.done .tt { color: var(--pass); }
+.tipcard .off { margin-top: 4px; font-size: 10px; padding: 2px 8px; background: none; border: 1px solid rgba(255,255,255,0.2); color: #8f8a7a; }
 .toast { background: rgba(60, 20, 90, 0.92); border: 1px solid var(--magic); border-radius: 12px; padding: 14px 28px; text-align: center; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 0 30px rgba(181,140,255,0.5); animation: pop 0.3s ease-out; }
 .toast b { font-size: 24px; color: #ff9cf0; }
 .toast span { font-size: 13px; color: #ddd; }
@@ -266,7 +287,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     <div id="ui"></div>
     <div id="rotate-hint">📱 가로로 돌려주세요</div>
   </div>
-  <p class="footer">v0.1.0 (2026-09-22) · WASD 이동 · J 공격 · ↑J 올려치기 · ↓J 내려찍기 · L 흘리기 · K 마법 공격 · L 방어 · Shift 회피 · Space 점프 · 방향 조합+J 물리 스킬 / +K 마법 스킬(→=앞) · 1~4 단축 · 문·상자·사람 앞에서 J · Q 물약 · T 스킬 · I 가방 · M 지도 · F3 디버그 · <button id="touch-toggle" class="linkbtn">📱 터치 조작 표시</button></p>
+  <p class="footer">v0.4.0 (2026-09-28) · WASD 이동 · J 공격 · ↑J 올려치기 · ↓J 내려찍기 · L 흘리기 · K 마법 공격 · L 방어 · Shift 회피 · Space 점프 · 방향 조합+J 물리 스킬 / +K 마법 스킬(→=앞) · 1~4 단축 · 문·상자·사람 앞에서 J · Q 물약 · T 스킬 · I 가방 · M 지도 · F3 디버그 · <button id="touch-toggle" class="linkbtn">📱 터치 조작 표시</button></p>
   <script>
 (() => {
   // src/core/EventBus.js
@@ -371,7 +392,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     /** 층별 몬스터 스케일: hp × hpPerFloor^floor, atk × atkPerFloor^floor (10층마다 hp 약 2배) */
     scaling: { hpPerFloor: 1.072, atkPerFloor: 1.05 },
     /** 웨이브: 방당 개체수 = min(maxPerRoom, base + floor/perFloorDiv), 웨이브 수는 층에 따라 1~3 */
-    wave: { base: 4, perFloorDiv: 3, maxPerRoom: 10, wave2From: 5, wave3From: 20, affix1From: 19, affix2From: 59 }
+    wave: { base: 4, perFloorDiv: 3, maxPerRoom: 10, wave2From: 5, wave3From: 20, affix1From: 19, affix2From: 59 },
+    /** M3 사망 페널티: 마지막 안식처에서 부활. 스탯 ×(1−statLoss) (시작값 밑으로는 안 내려감),
+     *  장착 장비 1~2개 내구도 −durLoss (0 이면 능력치 ×brokenMul·특수효과 정지), 가방 재료 matLoss 비율 손실 */
+    death: { statLoss: 0.03, durLoss: 5, durItemsMax: 2, matLoss: 0.2, brokenMul: 0.5 }
   };
   var DEFAULT_BINDINGS = {
     moveUp: ["KeyW"],
@@ -461,7 +485,12 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.bus.emit("input:up", { action, code: "touch" });
     }
     attach(target = window) {
+      const typing = (e) => {
+        var _a4, _b;
+        return !!((_b = (_a4 = e.target) == null ? void 0 : _a4.closest) == null ? void 0 : _b.call(_a4, "input, textarea, [contenteditable]"));
+      };
       target.addEventListener("keydown", (e) => {
+        if (typing(e)) return;
         const actions = this.codeToActions.get(e.code);
         if (actions) e.preventDefault();
         if (e.repeat) return;
@@ -585,6 +614,16 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.actionCount[action]++;
       const weight = ctx.weight ?? this.cfg.actionWeight[action] ?? 0.5;
       return this.gain(key, weight, action);
+    }
+    /** 사망 페널티: 모든 스탯 ×(1−pct), 시작값 밑으로는 내려가지 않는다 → { key: 잃은 양 } */
+    penalize(pct) {
+      const lost = {};
+      for (const k of STAT_KEYS) {
+        const v = this.values[k], next = Math.max(this.cfg.stat.start, +(v * (1 - pct)).toFixed(4));
+        lost[k] = +(v - next).toFixed(4);
+        this.values[k] = next;
+      }
+      return lost;
     }
     /** 스탯 레벨로부터 파생되는 전투 수치 (장비/패시브/버프는 Game.computeDerived 에서 합산) */
     derived() {
@@ -2017,10 +2056,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
 
   // src/data/npcs.js
   var NPCS = [
-    { id: "merchant", name: "상인 로렌", color: "#d8a24a", role: "상점(준비 중)", lines: ["살아서 다시 뵙네요. 물건은… 다음에 꼭 팔아드릴게요.", "이 아래엔 더 험한 것들이 있어요. 조심하세요."] },
-    { id: "smith", name: "대장장이 브람", color: "#8a8aa0", role: "제작·강화(준비 중)", lines: ["망치만 있었어도… 아무튼 고맙소.", "좋은 재료를 가져오면 뭐든 두드려 주지."] },
-    { id: "alchemist", name: "연금술사 이나", color: "#7ad0a0", role: "물약·등불(준비 중)", lines: ["안개는 저주예요. 등불을 만들면 길이 보일 거예요.", "슬라임 젤은 버리지 마세요. 쓸 데가 있어요."] },
-    { id: "guide", name: "안내인 세드", color: "#6a9ad0", role: "지도(준비 중)", lines: ["이 던전은 매번 모양을 바꿔요. 그래도 규칙은 있죠.", "계단은 항상 시작점에서 가장 먼 곳에 있어요."] },
+    { id: "merchant", name: "상인 로렌", color: "#d8a24a", role: "상점 — 재료 사고팔기", shop: "merchant", shopLine: "살아서 다시 뵙네요. 뭐든 사고, 뭐든 팝니다.", lines: ["살아서 다시 뵙네요. 물건은… 다음에 꼭 팔아드릴게요.", "이 아래엔 더 험한 것들이 있어요. 조심하세요."] },
+    { id: "smith", name: "대장장이 브람", color: "#8a8aa0", role: "대장간 — 수리·강화", shop: "smith", shopLine: "망치를 되찾았소. 부서진 건 고치고, 쓸 만한 건 더 세게 두드려 주지.", lines: ["망치만 있었어도… 아무튼 고맙소.", "좋은 재료를 가져오면 뭐든 두드려 주지."] },
+    { id: "alchemist", name: "연금술사 이나", color: "#7ad0a0", role: "연금술 — 물약·안개 등불", shop: "alchemist", shopLine: "안개는 저주예요. 등불을 들고 가면 함정이 보일 거예요.", lines: ["안개는 저주예요. 등불을 만들면 길이 보일 거예요.", "슬라임 젤은 버리지 마세요. 쓸 데가 있어요."] },
+    { id: "guide", name: "안내인 세드", color: "#6a9ad0", role: "안내 — 다음 층 지도", shop: "guide", shopLine: "이 던전은 매번 모양을 바꿔요. 그래도 다음 층 정도는 그려 드릴 수 있죠.", lines: ["이 던전은 매번 모양을 바꿔요. 그래도 규칙은 있죠.", "계단은 항상 시작점에서 가장 먼 곳에 있어요."] },
     { id: "villager1", name: "주민 한스", color: "#b08060", role: "주민", lines: ["가족을 찾고 있어요… 더 아래에 있을까요.", "모닥불이 이렇게 따뜻한 줄 몰랐네요."] },
     { id: "villager2", name: "주민 마리", color: "#c07090", role: "주민", lines: ["여기 계속 있어도 될까요? 무섭지만 혼자보단 낫네요.", "당신 덕분에 살았어요."] },
     { id: "villager3", name: "주민 톰", color: "#7080b0", role: "주민", lines: ["저 아래서 용의 울음을 들었어요. 정말이에요.", "언젠가 마을로 돌아갈 수 있겠죠?"] },
@@ -2441,8 +2480,60 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     /** 슬롯 목록 [{ slot, data|null }] */
     list() {
       return SAVE_SLOTS.map((slot) => ({ slot, data: this.read(slot) }));
+    },
+    // ── 저장 코드 (기기 간 이동) ─────────────────────────────
+    //  RC1:<base64url(deflate-raw(JSON))>.<fnv1a32 hex>   압축 API 가 없으면 RC0: (무압축)
+    async exportCode(slot) {
+      const d = this.read(slot);
+      if (!d) return null;
+      const { slot: _s, ...rest } = d;
+      const json = JSON.stringify(rest), sum = fnv1a(json);
+      const bytes = new TextEncoder().encode(json);
+      if (typeof CompressionStream === "function") return `RC1:${b64url(await pipe(bytes, new CompressionStream("deflate-raw")))}.${sum}`;
+      return `RC0:${b64url(bytes)}.${sum}`;
+    },
+    /** @returns {Promise<{ok:true, data}|{ok:false, error:string}>} */
+    async importCode(code) {
+      try {
+        const m = /^(RC[01]):([A-Za-z0-9_-]+)\.([0-9a-f]{8})$/.exec(String(code).replace(/\s+/g, ""));
+        if (!m) return { ok: false, error: "코드 형식이 아니다 (RC1: 로 시작해야 함)" };
+        let bytes = unb64url(m[2]);
+        if (m[1] === "RC1") {
+          if (typeof DecompressionStream !== "function") return { ok: false, error: "이 브라우저는 압축 코드를 풀 수 없다" };
+          bytes = await pipe(bytes, new DecompressionStream("deflate-raw"));
+        }
+        const json = new TextDecoder().decode(bytes);
+        if (fnv1a(json) !== m[3]) return { ok: false, error: "코드가 손상됐다 (일부가 잘렸거나 바뀜)" };
+        const data = JSON.parse(json);
+        if (typeof data.seed !== "number" || typeof data.floorIndex !== "number" || !data.stats || !data.inv) return { ok: false, error: "저장 데이터가 아니다" };
+        return { ok: true, data };
+      } catch {
+        return { ok: false, error: "코드를 읽을 수 없다" };
+      }
     }
   };
+  function fnv1a(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return (h >>> 0).toString(16).padStart(8, "0");
+  }
+  async function pipe(bytes, stream) {
+    return new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+  }
+  function b64url(bytes) {
+    let s = "";
+    for (let i = 0; i < bytes.length; i += 32768) s += String.fromCharCode(...bytes.subarray(i, i + 32768));
+    return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function unb64url(s) {
+    const b = atob(s.replace(/-/g, "+").replace(/_/g, "/"));
+    const out = new Uint8Array(b.length);
+    for (let i = 0; i < b.length; i++) out[i] = b.charCodeAt(i);
+    return out;
+  }
 
   // src/systems/Puzzle.js
   var HINT_MAX = 2;
@@ -2773,6 +2864,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     // ── 소비 ─────────────────────────────────────────────────
     hp_potion: { name: "회복 물약", type: "consumable", icon: "🧪", effect: { hpPct: 0.4 }, desc: "HP 40% 회복 (Q)" },
     mp_potion: { name: "마나 물약", type: "consumable", icon: "🧫", effect: { mpPct: 0.5 }, desc: "MP 50% 회복" },
+    lantern: { name: "안개 등불", type: "consumable", icon: "🏮", effect: { lantern: true }, desc: "안개 방에 들어서면 자동으로 켜져 그 방의 함정을 모두 드러낸다 (연금술사)" },
     bag_expansion: { name: "가방 확장", type: "upgrade", icon: "🎒", effect: { bagSlots: 10 }, desc: "가방 칸 +10 (제작 즉시 적용, 최대 300)" },
     // ── 무기 (15) ─────────────────────────────────────────────
     rusty_sword: {
@@ -3142,6 +3234,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     // 소비/확장
     hp_potion: "common",
     mp_potion: "common",
+    lantern: "common",
     bag_expansion: "uncommon"
   };
   for (const [id, def] of Object.entries(ITEMS)) {
@@ -3235,7 +3328,49 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     return parts.join(" · ");
   }
 
+  // src/systems/Economy.js
+  var GRADE_PRICE = { common: 1, uncommon: 2.5, rare: 6, legendary: 15 };
+  var SELL_RATE = 0.3;
+  var PLUS_MAX = 5;
+  var PLUS_STEP = 0.1;
+  var ENHANCE_CHANCE = [1, 1, 1, 0.7, 0.5];
+  var FIXED = { hp_potion: 20, mp_potion: 20, lantern: 30 };
+  function priceOf(id) {
+    const d = ITEMS[id];
+    if (!d) return 0;
+    const g = GRADE_PRICE[d.grade] || 1;
+    if (FIXED[id]) return FIXED[id];
+    if (d.type === "material") return Math.round(5 * (1 + (d.band - 1) * 0.8) * g);
+    if (isEquip(d)) return Math.round(30 * Math.pow(d.tier || 1, 1.6) * g);
+    if (d.type === "recipe") return Math.round(20 * (d.tier || 1) * g);
+    return 0;
+  }
+  var sellPriceOf = (id) => {
+    const p = priceOf(id);
+    return p > 0 ? Math.max(1, Math.floor(p * SELL_RATE)) : 0;
+  };
+  var canSell = (id) => sellPriceOf(id) > 0;
+  function goldFor(kind, depth, rng = Math.random) {
+    const j = 0.75 + rng() * 0.5;
+    const base = 2 + depth * 0.5;
+    const mul = { mob: 1, elite: 3, boss: 20, chest: 4, altar: 7, prop: 0.35 }[kind] ?? 1;
+    return Math.max(1, Math.round(base * mul * j));
+  }
+  var chartCost = (floorIdx) => 15 + floorIdx * 3;
+  var repairCost = (id, dur) => dur >= 100 ? 0 : Math.max(1, Math.ceil(priceOf(id) * 0.4 * (100 - dur) / 100));
+  function enhanceMaterial(id) {
+    var _a4;
+    const needs = Object.keys(((_a4 = ITEMS[id]) == null ? void 0 : _a4.needs) || {}).filter((m) => ITEMS[m].type === "material");
+    if (!needs.length) return null;
+    return needs.reduce((a, b) => ITEMS[b].band > ITEMS[a].band ? b : a);
+  }
+  function enhanceCost(id, plus) {
+    if (!isEquip(ITEMS[id]) || plus >= PLUS_MAX) return null;
+    return { gold: Math.round(priceOf(id) * 0.5 * (plus + 1)), mat: enhanceMaterial(id), n: plus + 1, chance: ENHANCE_CHANCE[plus] };
+  }
+
   // src/systems/Inventory.js
+  var DUR_MAX = 100;
   var Inventory = class {
     constructor(bus2) {
       this.bus = bus2;
@@ -3244,6 +3379,8 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.storage = /* @__PURE__ */ new Map();
       this.equipped = { weapon: null, armor: null, accessory: null };
       this.recipes = [...STARTER_RECIPES];
+      this.dur = {};
+      this.plus = {};
     }
     changed() {
       var _a4;
@@ -3369,14 +3506,14 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     // ── 소비 ────────────────────────────────────────────────
     use(id, player) {
-      var _a4;
+      var _a4, _b;
       const def = ITEMS[id];
-      if ((def == null ? void 0 : def.type) !== "consumable" || this.count(id) === 0) return false;
+      if ((def == null ? void 0 : def.type) !== "consumable" || ((_a4 = def.effect) == null ? void 0 : _a4.lantern) || this.count(id) === 0) return false;
       const d = player.derived, e = def.effect;
       if (e.hpPct) player.hp = Math.min(d.maxHp, player.hp + d.maxHp * e.hpPct);
       if (e.mpPct) player.mp = Math.min(d.maxMp, player.mp + d.maxMp * e.mpPct);
       this.remove(id, 1);
-      (_a4 = this.bus) == null ? void 0 : _a4.emit("inv:used", { id, def });
+      (_b = this.bus) == null ? void 0 : _b.emit("inv:used", { id, def });
       return true;
     }
     // ── 레시피 ──────────────────────────────────────────────
@@ -3437,18 +3574,69 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     recipeList() {
       return this.recipes.map((id) => ({ id, def: ITEMS[id], can: this.canCraft(id) }));
     }
+    // ── 내구도 ──────────────────────────────────────────────
+    durOf(id) {
+      return this.dur[id] ?? DUR_MAX;
+    }
+    isBroken(id) {
+      return this.durOf(id) <= 0;
+    }
+    /** 내구도 n 감소 → 남은 값 */
+    wear(id, n) {
+      const v = Math.max(0, this.durOf(id) - n);
+      this.dur[id] = v;
+      this.changed();
+      return v;
+    }
+    repair(id) {
+      if (!(id in this.dur)) return false;
+      delete this.dur[id];
+      this.changed();
+      return true;
+    }
+    plusOf(id) {
+      return this.plus[id] || 0;
+    }
+    setPlus(id, n) {
+      n = Math.max(0, Math.min(PLUS_MAX, n));
+      if (n) this.plus[id] = n;
+      else delete this.plus[id];
+      this.changed();
+    }
+    /** 장비 id 보유 여부 (장착 중 포함) */
+    owns(id) {
+      return this.count(id) > 0 || Object.values(this.equipped).includes(id);
+    }
+    /** 가방의 재료를 종류마다 pct 비율만큼 잃는다 (소수점은 확률 반올림) → [{id, n}] */
+    loseMaterials(pct, rng = Math.random) {
+      const lost = [];
+      const ids = [...new Set(this.bag.filter((x) => x && ITEMS[x.id].type === "material").map((x) => x.id))];
+      for (const id of ids) {
+        const want = this.count(id) * pct, n = Math.floor(want) + (rng() < want % 1 ? 1 : 0);
+        if (n > 0 && this.remove(id, n)) lost.push({ id, n });
+      }
+      return lost;
+    }
     // ── 장비 효과 합산 ──────────────────────────────────────
     equippedDefs() {
       return Object.values(this.equipped).filter(Boolean).map((id) => ITEMS[id]);
     }
+    /** 특수효과가 살아 있는(내구도 > 0) 장비 */
+    workingDefs() {
+      return Object.values(this.equipped).filter((id) => id && !this.isBroken(id)).map((id) => ITEMS[id]);
+    }
     equipBonus() {
       const b = { physAtk: 0, magicAtk: 0, def: 0, maxHp: 0, maxMp: 0, moveSpeedPct: 0, autoDodge: 0, hpRegen: 0, mpRegen: 0, atkSpeedPct: 0 };
-      for (const d of this.equippedDefs()) for (const [k, v] of Object.entries(d.stats || {})) b[k] = (b[k] || 0) + v;
+      for (const id of Object.values(this.equipped)) {
+        if (!id) continue;
+        const mul = (this.isBroken(id) ? BALANCE.death.brokenMul : 1) * (1 + PLUS_STEP * this.plusOf(id));
+        for (const [k, v] of Object.entries(ITEMS[id].stats || {})) b[k] = (b[k] || 0) + v * mul;
+      }
       return b;
     }
     skillMods() {
       const m = { levels: {}, allLevels: 0, cooldownPct: 0, magicCooldownPct: 0, physCooldownPct: 0 };
-      for (const d of this.equippedDefs()) {
+      for (const d of this.workingDefs()) {
         const sm = d.skillMods || {};
         for (const [id, n] of Object.entries(sm.levels || {})) m.levels[id] = (m.levels[id] || 0) + n;
         m.allLevels += sm.allLevels || 0;
@@ -3460,11 +3648,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     procs() {
       const out = [];
-      for (const [slot, id] of Object.entries(this.equipped)) if (id) for (const p of ITEMS[id].procs || []) out.push({ ...p, source: id, slot });
+      for (const [slot, id] of Object.entries(this.equipped)) if (id && !this.isBroken(id)) for (const p of ITEMS[id].procs || []) out.push({ ...p, source: id, slot });
       return out;
     }
     serialize() {
-      return { bag: this.bag.map((x) => x ? [x.id, x.count] : null), bagSlots: this.bagSlots, equipped: { ...this.equipped }, storage: [...this.storage], recipes: this.recipes.slice() };
+      return { bag: this.bag.map((x) => x ? [x.id, x.count] : null), bagSlots: this.bagSlots, equipped: { ...this.equipped }, storage: [...this.storage], recipes: this.recipes.slice(), dur: { ...this.dur }, plus: { ...this.plus } };
     }
     restore(d) {
       this.bagSlots = Math.min(BAG_MAX, Math.max(BAG_BASE, d.bagSlots || BAG_BASE));
@@ -3480,6 +3668,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         var _a4;
         return (_a4 = ITEMS[id]) == null ? void 0 : _a4.needs;
       }).slice(0, RECIPE_LIMIT);
+      this.dur = {};
+      for (const [id, v] of Object.entries(d.dur || {})) if (isEquip(ITEMS[id]) && v < DUR_MAX) this.dur[id] = Math.max(0, +v || 0);
+      this.plus = {};
+      for (const [id, v] of Object.entries(d.plus || {})) if (isEquip(ITEMS[id]) && v > 0) this.plus[id] = Math.min(PLUS_MAX, v | 0);
       this.changed();
     }
   };
@@ -6274,6 +6466,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.fillText(`${p.name} · ${g.jobs.current.name}`, 16, 24);
       this.bar(16, 30, 184, 11, p.hp / d.maxHp, "#e0393e", `HP ${Math.ceil(p.hp)}/${d.maxHp}`);
       this.bar(16, 44, 184, 9, p.mp / d.maxMp, "#3a7bd5", `MP ${Math.floor(p.mp)}/${d.maxMp}`);
+      ctx.fillStyle = "#e0b85a";
+      ctx.font = this.f(10, true);
+      ctx.textAlign = "right";
+      ctx.fillText(`${g.gold} G`, 200, 62);
+      ctx.textAlign = "left";
       const colors = { STR: "#ff7b5c", AGI: "#7cff9c", VIT: "#ffd35c", INT: "#b58cff" };
       STAT_KEYS.forEach((k, i) => {
         const x = 16 + i % 2 * 96, y = 70 + Math.floor(i / 2) * 15;
@@ -6294,7 +6491,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           ctx.fillText(`${b.name} ${b.remaining.toFixed(1)}s`, 16, 112 + i * 13);
         });
       }
-      const cell = g.room.cell, alive = g.room.enemies.filter((e) => e.state !== "dead").length;
+      const cell = g.room.cell, alive2 = g.room.enemies.filter((e) => e.state !== "dead").length;
       this.panel(W - 178, 8, 170, 40);
       ctx.fillStyle = g.room.fog ? "#b8c8d8" : "#fff";
       ctx.font = this.f(11, true);
@@ -6302,7 +6499,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.fillText(`${g.dungeon.floorIndex + 1}층 · ${ROOM_TYPES[cell.type]}${g.room.fog ? " · 안개" : ""}`, W - 170, 24);
       ctx.font = this.f(10);
       ctx.fillStyle = "#ccc";
-      ctx.fillText(g.room.sealed ? "봉인 — 제단 퍼즐" : alive ? `남은 적 ${alive}` : (g.room.doors.length ? `출구 ${g.room.doors.length}` : "안전") + `  ·  SP ${g.skills.points}/${g.skills.maxBank}`, W - 170, 40);
+      ctx.fillText(g.room.sealed ? "봉인 — 제단 퍼즐" : alive2 ? `남은 적 ${alive2}` : (g.room.doors.length ? `출구 ${g.room.doors.length}` : "안전") + `  ·  SP ${g.skills.points}/${g.skills.maxBank}`, W - 170, 40);
       this.drawMinimap(W - 178, 54, 15, 170);
       this.drawCombo(W - 16, 215, 0.8);
       {
@@ -6532,7 +6729,9 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ctx.textAlign = "right";
       ctx.fillStyle = DIM;
       ctx.font = this.f(11);
-      ctx.fillText(`픽 ${g.skills.pickCount}/${g.skills.pickCap} · 처치 ${g.kills}`, 300, 76);
+      ctx.fillText(`픽 ${g.skills.pickCount}/${g.skills.pickCap} · 처치 ${g.kills} · `, 300 - ctx.measureText(`${g.gold} G`).width, 76);
+      ctx.fillStyle = GOLD;
+      ctx.fillText(`${g.gold} G`, 300, 76);
       const colors = { STR: "#ff7b5c", AGI: "#7cff9c", VIT: "#ffd35c", INT: "#b58cff" };
       STAT_KEYS.forEach((k, i) => {
         const x = 24 + i * 70;
@@ -6630,6 +6829,152 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
   };
 
+  // src/systems/Tips.js
+  var KEY = "g1.tips.v1";
+  var alive = (g) => g.room.enemies.some((e) => e.state !== "dead");
+  var TIPS = [
+    {
+      id: "move",
+      when: (g) => g.time > 0.5,
+      done: (g, s) => Math.hypot(g.player.x - s.x0, g.player.y - s.y0) > 160,
+      timeout: 12,
+      title: "이동",
+      body: (t) => t ? "왼쪽 화면 아무 곳이나 눌러 끌면 조이스틱이 생긴다." : "<b>W A S D</b> 로 움직인다. 위·아래는 방 안쪽·앞쪽."
+    },
+    {
+      id: "combo",
+      when: alive,
+      done: (g) => g.player.hitCombo >= 3,
+      timeout: 15,
+      title: "콤보",
+      body: (t) => t ? "<b>공격</b> 버튼을 연타하면 3단 콤보." : "<b>J</b> 를 연타하면 3단 콤보. 맞힐수록 힘(STR)이 오른다."
+    },
+    {
+      id: "launch",
+      after: "combo",
+      when: alive,
+      done: (g) => g.room.enemies.some((e) => e.state === "launched"),
+      timeout: 15,
+      title: "띄우기",
+      body: (t) => t ? "조이스틱을 위로 튕기고 <b>공격</b> — 적이 뜬다. 공중에서 공격으로 추가타." : "<b>W + J</b> 로 올려치기 → 떠 있는 적에게 <b>J</b> 추가타 → <b>S + J</b> 내려찍기."
+    },
+    {
+      id: "parry",
+      when: (g) => g.parryThreat(),
+      done: (g) => g.player.counterReady > 0,
+      timeout: 5,
+      maxShows: 3,
+      slow: 0.9,
+      title: "흘리기",
+      body: (t) => t ? "붉은 <b>!</b> 가 뜨면 <b>방어</b> 버튼 — 성공하면 다음 공격이 강한 반격." : "붉은 <b>!</b> 가 뜬 적을 마주 보고 <b>L</b> — 흘리면 다음 <b>J</b> 가 강한 반격(×2.6)."
+    },
+    {
+      id: "dodge",
+      when: (g) => g.player.hp < g.player.derived.maxHp * 0.8 && alive(g),
+      done: (g) => g.player.state === "dodge",
+      timeout: 12,
+      title: "회피",
+      body: (t) => t ? "<b>회피</b> 버튼 — 구르는 순간은 무적. 피할수록 민첩(AGI)이 오른다." : "<b>Shift</b> 회피 — 구르는 순간은 무적. <b>Space</b> 점프로 낮은 공격을 넘는다."
+    },
+    {
+      id: "potion",
+      when: (g) => g.player.hp < g.player.derived.maxHp * 0.35 && g.inv.count("hp_potion") > 0,
+      done: (g) => g.tipFlags.potion,
+      timeout: 10,
+      title: "물약",
+      body: (t) => t ? "<b>물약</b> 버튼으로 HP 40% 회복." : "<b>Q</b> 로 회복 물약 — HP 40% 회복."
+    },
+    {
+      id: "interact",
+      when: (g) => !alive(g) && !!g.contextAction() && g.room.cell.type !== "start",
+      done: (g) => g.tipFlags.interact,
+      timeout: 20,
+      title: "상호작용",
+      body: (t) => t ? "적이 없을 때 문·상자·제단·사람 앞에서 <b>공격</b> 버튼 = 입장·열기·퍼즐·대화." : "적이 없을 때 문·상자·제단·사람 앞에서 <b>J</b> = 입장·열기·퍼즐·대화. <b>M</b> 은 지도."
+    }
+  ];
+  var Tips = class {
+    constructor(game2) {
+      this.game = game2;
+      this.cur = null;
+      this.load();
+    }
+    load() {
+      var _a4;
+      let d = {};
+      try {
+        d = JSON.parse(((_a4 = globalThis.localStorage) == null ? void 0 : _a4.getItem(KEY)) || "{}");
+      } catch {
+      }
+      this.seen = new Set(d.seen || []);
+      this.shows = d.shows || {};
+      this.off = !!d.off;
+    }
+    save() {
+      var _a4;
+      try {
+        (_a4 = globalThis.localStorage) == null ? void 0 : _a4.setItem(KEY, JSON.stringify({ seen: [...this.seen], shows: this.shows, off: this.off }));
+      } catch {
+      }
+    }
+    reset() {
+      this.seen.clear();
+      this.shows = {};
+      this.off = false;
+      this.save();
+    }
+    disable() {
+      this.off = true;
+      this.close();
+      this.save();
+    }
+    get touch() {
+      return typeof navigator !== "undefined" && (navigator.maxTouchPoints > 0 || "ontouchstart" in globalThis);
+    }
+    close() {
+      var _a4;
+      this.cur = null;
+      (_a4 = this.game.ui) == null ? void 0 : _a4.hideTip();
+    }
+    /** 매 프레임 (play 중) */
+    update(dt) {
+      var _a4, _b;
+      const g = this.game;
+      if (this.off) return;
+      if (this.cur) {
+        const c = this.cur;
+        c.t += dt;
+        if (c.doneT != null) {
+          c.doneT += dt;
+          if (c.doneT > 1.2) this.close();
+          return;
+        }
+        if (c.tip.done(g, c)) {
+          c.doneT = 0;
+          this.seen.add(c.tip.id);
+          this.save();
+          (_a4 = g.ui) == null ? void 0 : _a4.showTip(c.tip, this.touch, true);
+          return;
+        }
+        if (c.t > c.tip.timeout) {
+          if ((this.shows[c.tip.id] || 0) >= (c.tip.maxShows || 1)) this.seen.add(c.tip.id);
+          this.save();
+          this.close();
+        }
+        return;
+      }
+      for (const tip of TIPS) {
+        if (this.seen.has(tip.id) || tip.after && !this.seen.has(tip.after)) continue;
+        if (!tip.when(g)) continue;
+        this.shows[tip.id] = (this.shows[tip.id] || 0) + 1;
+        this.cur = { tip, t: 0, x0: g.player.x, y0: g.player.y, doneT: null };
+        if (tip.slow) g.slowT = Math.max(g.slowT || 0, tip.slow);
+        (_b = g.ui) == null ? void 0 : _b.showTip(tip, this.touch, false);
+        break;
+      }
+    }
+  };
+
   // src/game/Game.js
   var C3 = BALANCE.combat;
   var Game = class {
@@ -6659,6 +7004,9 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       this.comboGrade = "";
       this.comboBest = 0;
+      this.tips = new Tips(this);
+      this.tipFlags = {};
+      this.slowT = 0;
       this.bindEvents();
     }
     now() {
@@ -6734,6 +7082,13 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.rescued = [];
       this.bagGrants = [];
       this.procTimers = {};
+      this.lastSanctuary = null;
+      this.deaths = 0;
+      this.gold = 0;
+      this.charts = [];
+      this.tipFlags = {};
+      this.slowT = 0;
+      this.tips.close();
       this.phase = "play";
       this.paused = false;
     }
@@ -6761,7 +7116,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         time: this.time,
         maxDepth: this.maxDepth,
         rescued: this.rescued.slice(),
-        bagGrants: this.bagGrants.slice()
+        bagGrants: this.bagGrants.slice(),
+        deaths: this.deaths,
+        gold: this.gold,
+        charts: this.charts.slice()
       };
     }
     /** 기록석 수동 저장 (슬롯 1~3) */
@@ -6797,7 +7155,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.rescued = (d.rescued || []).filter((id) => NPC_BY_ID[id]);
       this.bagGrants = (d.bagGrants || []).slice();
       this.dungeon.regen = { ...d.regen || {} };
+      this.deaths = d.deaths || 0;
+      this.gold = Math.max(0, d.gold || 0);
+      this.charts = (d.charts || []).slice();
       const f = this.dungeon.getFloor(d.floorIndex);
+      if (f.sanctuary) this.lastSanctuary = d.floorIndex;
       if (f.sanctuary) {
         if (f.isBoss) f.cells[0].cleared = true;
         this.dungeon.goToFloor(d.floorIndex, f.sanctuary.id);
@@ -6817,6 +7179,53 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const c = this.dungeon.goToFloor(from);
       this.enterRoom(c, null);
       this.message(`${from + 1}~${to + 1}층을 새로 탐험한다. 방 배치가 모두 바뀌었다.`, "#ffd700");
+    }
+    /**
+     * M3: 쓰러진 뒤 마지막 안식처에서 일어난다. 진행(스탯·가방·층 상태)은 유지하고 페널티만 받는다.
+     *  스탯 −3% · 장착 장비 1~2개 내구도 −5 · 가방 재료 20% 손실 → 안식처 진입 시 자동 저장이 덮어써 되돌릴 수 없다.
+     */
+    revive() {
+      if (this.phase !== "gameover") return null;
+      const D = BALANCE.death, inv = this.inv;
+      this.deaths++;
+      const stats = this.stats.penalize(D.statLoss);
+      const eq = Object.values(inv.equipped).filter(Boolean), worn = [];
+      const nWear = Math.min(eq.length, 1 + Math.floor(this.rng() * D.durItemsMax));
+      for (let i = 0; i < nWear; i++) {
+        const id = eq.splice(Math.floor(this.rng() * eq.length), 1)[0];
+        worn.push({ id, left: inv.wear(id, D.durLoss) });
+      }
+      const mats = inv.loseMaterials(D.matLoss, this.rng);
+      const fi = this.lastSanctuary;
+      let cell;
+      if (fi == null) cell = this.dungeon.goToFloor(0);
+      else {
+        const f = this.dungeon.getFloor(fi);
+        if (f.isBoss) f.cells[0].cleared = true;
+        cell = this.dungeon.goToFloor(fi, f.sanctuary.id);
+      }
+      const p = this.player;
+      this.timers = [];
+      this.fx = [];
+      this.hitStop = 0;
+      this.comboGrade = "";
+      p.buffs = [];
+      p.counterReady = 0;
+      p.hitCombo = 0;
+      p.knockVx = 0;
+      p.invuln = 1.5;
+      this.phase = "play";
+      this.paused = false;
+      p.derived = this.computeDerived();
+      p.hp = p.derived.maxHp;
+      p.mp = p.derived.maxMp;
+      this.enterRoom(cell, null);
+      const lostTxt = Object.entries(stats).filter(([, v]) => v > 0).map(([k, v]) => `${k} −${v.toFixed(2)}`).join(" ") || "변화 없음";
+      this.message(`쓰러졌다가 ${fi == null ? "던전 입구" : `${fi + 1}층 안식처`}에서 일어났다. (${this.deaths}번째) 스탯 ${lostTxt}`, "#ff9c9c");
+      if (worn.length) this.message(`장비가 상했다: ${worn.map((w) => `${ITEMS[w.id].name} ${w.left}/100${w.left <= 0 ? "(망가짐!)" : ""}`).join(", ")}`, "#ff9c9c");
+      if (mats.length) this.message(`재료를 잃었다: ${mats.map((m) => `${ITEMS[m.id].name} ${m.n}`).join(", ")}`, "#ff9c9c");
+      this.ui.toast("부활", `스탯 −${Math.round(D.statLoss * 100)}% · 장비 ${worn.length}개 손상 · 재료 ${mats.reduce((s, m) => s + m.n, 0)}개 손실`);
+      return { stats, worn, mats };
     }
     computeDerived() {
       const s = this.stats.derived(), eq = this.inv.equipBonus(), pm = this.skills.passiveMods(), p = this.player;
@@ -6897,6 +7306,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       this.camX = clamp(p.x - this.viewW / 2, 0, Math.max(0, width - this.viewW));
       const t = cell.type;
+      if (this.charts.includes(this.dungeon.floorIndex)) this.chartFloor();
       if (cell.fog) {
         this.enterFogRoom(cell);
       } else if (!cell.cleared && (t === "combat" || t === "elite" || t === "stairs" || t === "boss" || t === "rescue")) {
@@ -6949,6 +7359,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         const id = this.pickFromPool(pool);
         if (id) this.spawnPickup(id, o.x, o.y);
       }
+      if (this.rng() < 0.5) this.addGold(goldFor("prop", this.depth, this.rng), o.x, o.y - 40);
       this.addFx({ kind: "debris", x: o.x, y: o.y, color: o.kind === "pot" ? "#c08a4a" : "#8a6a3a", life: 0.6 });
       this.hitStop = Math.max(this.hitStop, 0.02);
       if (this.room.props.every((p) => !p.breakable || p.broken)) this.room.cell.propsBroken = true;
@@ -6983,6 +7394,12 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         }
         r.traps.push(t);
       }
+      if (!cell.lanternLit && this.inv.count("lantern") > 0) {
+        this.inv.remove("lantern", 1);
+        cell.lanternLit = true;
+        this.message(`🏮 안개 등불을 켰다 — 함정이 모두 드러났다 (남은 등불 ${this.inv.count("lantern")})`, "#ffd27f");
+      }
+      if (cell.lanternLit) for (const t of r.traps) t.revealed = true;
       this.message(cell.puzzleSolved ? "짙은 안개… 제단의 보물은 이미 가져갔다." : "짙은 안개… 함정 너머 제단이 있다. 퍼즐을 풀면 귀한 보상을 준다.", "#b8c8d8");
     }
     updateTraps(dt) {
@@ -7095,6 +7512,9 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       }
       this.spawnPickup("hp_potion", r.altar.x - 30, r.altar.y);
       this.spawnPickup("mp_potion", r.altar.x - 50, r.altar.y);
+      const g = goldFor("altar", this.depth, this.rng);
+      this.addGold(g, r.altar.x, r.altar.y - 60);
+      got.push(`${g} G`);
       return got;
     }
     enterSanctuary(cell) {
@@ -7121,6 +7541,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       p.mp = d.maxMp;
       this.message("안식처. 모닥불 곁에서 완전히 회복했다.", "#ffb347");
       const fi = this.dungeon.floorIndex;
+      this.lastSanctuary = fi;
       if (!this.bagGrants.includes(fi)) {
         this.bagGrants.push(fi);
         const added = this.inv.expandBag(BAG_PER_SANCTUARY);
@@ -7370,6 +7791,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
             const ca = this.contextAction();
             if (ca) {
               this.cmd.clear();
+              this.tipFlags.interact = true;
               ca.fn();
               break;
             }
@@ -7412,11 +7834,14 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           this.trySkill(this.skills.quickslots[+action.slice(5) - 1]);
           break;
         case "interact":
+          this.tipFlags.interact = true;
           this.interact();
           break;
         case "usePotion":
-          if (this.inv.use("hp_potion", p)) this.message("회복 물약 사용", "#7CFC00");
-          else this.message("회복 물약이 없다", "#aaa");
+          if (this.inv.use("hp_potion", p)) {
+            this.tipFlags.potion = true;
+            this.message("회복 물약 사용", "#7CFC00");
+          } else this.message("회복 물약이 없다", "#aaa");
           break;
       }
     }
@@ -7474,7 +7899,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const PL = { npc: "대화", storage: "창고", craft: "제작", campfire: "휴식", stone: "저장" };
       for (const o of r.props) {
         if (o.breakable) continue;
-        add(o, PL[o.kind] || "사용", () => this.useProp(o), 70);
+        add(o, o.kind === "npc" && o.npc.shop ? "거래" : PL[o.kind] || "사용", () => this.useProp(o), 70);
       }
       if (!cands.length) return null;
       cands.sort((a, b) => a.d - b.d);
@@ -7528,13 +7953,13 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     objectiveText() {
       var _a4;
-      const r = this.room, alive = r.enemies.filter((e) => e.state !== "dead").length;
+      const r = this.room, alive2 = r.enemies.filter((e) => e.state !== "dead").length;
       if (r.sealed) return "봉인 제단의 퍼즐을 풀어라";
-      if (alive) {
+      if (alive2) {
         const boss = r.enemies.find((e) => e.boss && e.state !== "dead");
         if (boss) return `${boss.def.name}을(를) 쓰러뜨려라`;
         const w = ((_a4 = r.waves) == null ? void 0 : _a4.length) || 0;
-        return `남은 적 ${alive}${w ? ` · 다음 무리 ${w}` : ""}`;
+        return `남은 적 ${alive2}${w ? ` · 다음 무리 ${w}` : ""}`;
       }
       if (r.cell.type === "sanctuary") return this.dungeon.isBossFloor ? "쉬고, 기록석에 저장하고, 계단으로" : "쉼터 — 기록석에 저장하고 문으로 계속";
       if (r.stairs) return "계단으로 내려가라";
@@ -7547,12 +7972,17 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     hintText() {
       const p = this.player, r = this.room;
       if (p.counterReady > 0) return "J — 강한 반격!";
-      if (r.enemies.some((e) => e.state === "windup" && e.pending && isHeavy(e.pending, e) && Math.abs(e.x - p.x) < 260)) return "붉은 ! — 지금 L 을 눌러 흘려라!";
+      if (this.parryThreat()) return "붉은 ! — 지금 L 을 눌러 흘려라!";
       if (this.airborneEnemyNear(C3.slam.range)) return "J 공중 추가타 · ↓+J 내려찍기";
       const ca = this.contextAction();
       if (ca) return `${ca.label} — J`;
       if (r.enemies.some((e) => e.state !== "dead")) return "↑+J 로 띄우고 J 로 이어가라 · 방향 조합 + J/K 커맨드";
       return "WASD 이동 · 미니맵 클릭 = 지도";
+    }
+    /** 가까운 적이 흘릴 수 있는 강공격(붉은 !)을 준비 중인가 */
+    parryThreat() {
+      const p = this.player;
+      return this.room.enemies.some((e) => e.state === "windup" && e.pending && isHeavy(e.pending, e) && Math.abs(e.x - p.x) < 260);
     }
     /** 상황 버튼: 살아 있는 적이 없고 근처에 대상이 있으면 공격 버튼이 그 행동이 된다 (B2-대안) */
     contextAction() {
@@ -7577,7 +8007,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (action === "equip") {
         if (this.inv.equip(x.id)) this.message(`${def.name} 장착`, "#9ad0ff");
       } else if (action === "use") {
-        if (this.inv.use(x.id, this.player)) this.message(`${def.name} 사용`, "#7CFC00");
+        if (this.inv.use(x.id, this.player)) {
+          if (x.id === "hp_potion") this.tipFlags.potion = true;
+          this.message(`${def.name} 사용`, "#7CFC00");
+        }
       } else if (action === "read") {
         const res = this.learnRecipeItem(x.id);
         if (res === "full") this.ui.showRecipeReplace(def.teaches, x.id);
@@ -7589,9 +8022,103 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         this.message(`${def.name} 전부 버림`, "#aaa");
       }
     }
+    // ── M4 골드 · NPC 거래 ──────────────────────────────────
+    addGold(n, x, y) {
+      if (n <= 0) return;
+      this.gold += n;
+      if (x != null) this.fxText(x, y, `+${n} G`, "#e0b85a", 13);
+    }
+    pay(n) {
+      if (this.gold < n) {
+        this.message(`골드가 부족하다 (${this.gold}/${n} G)`, "#ff9c9c");
+        return false;
+      }
+      this.gold -= n;
+      return true;
+    }
+    /** 상점 구매 → 실제 산 개수 */
+    buy(id, n = 1) {
+      const price = priceOf(id);
+      if (price <= 0) return 0;
+      n = Math.min(n, Math.floor(this.gold / price));
+      if (n <= 0) {
+        this.message(`골드가 부족하다 (${this.gold}/${price} G)`, "#ff9c9c");
+        return 0;
+      }
+      const got = n - this.inv.add(id, n);
+      if (!got) {
+        this.message("가방이 가득 찼다.", "#ff9c9c");
+        return 0;
+      }
+      this.gold -= price * got;
+      this.message(`${ITEMS[id].name} ${got}개 구입 (−${price * got} G)`, "#e0b85a");
+      return got;
+    }
+    sell(id, n = 1) {
+      if (!canSell(id)) return 0;
+      n = Math.min(n, this.inv.count(id));
+      if (n <= 0) return 0;
+      this.inv.remove(id, n);
+      const g = sellPriceOf(id) * n;
+      this.gold += g;
+      this.message(`${ITEMS[id].name} ${n}개 판매 (+${g} G)`, "#e0b85a");
+      return g;
+    }
+    repairItem(id) {
+      const cost = repairCost(id, this.inv.durOf(id));
+      if (!cost || !this.pay(cost)) return false;
+      this.inv.repair(id);
+      this.message(`${ITEMS[id].name} 수리 완료 (−${cost} G)`, "#9ad0ff");
+      return true;
+    }
+    /** 대장장이 강화: 골드+재료 소모, +4·+5 는 실패할 수 있다 (실패해도 단계는 유지) → 'ok'|'fail'|null */
+    enhance(id) {
+      const plus = this.inv.plusOf(id), c = enhanceCost(id, plus);
+      if (!c || !this.inv.owns(id)) return null;
+      if (c.mat && this.inv.count(c.mat) < c.n) {
+        this.message(`재료가 부족하다: ${ITEMS[c.mat].name} ${this.inv.count(c.mat)}/${c.n}`, "#ff9c9c");
+        return null;
+      }
+      if (!this.pay(c.gold)) return null;
+      if (c.mat) this.inv.remove(c.mat, c.n);
+      if (this.rng() < c.chance) {
+        this.inv.setPlus(id, plus + 1);
+        this.message(`🔨 ${ITEMS[id].name} +${plus + 1} 강화 성공!`, "#ffd700");
+        this.ui.toast("강화 성공", `${ITEMS[id].name} +${plus + 1}`);
+        return "ok";
+      }
+      this.inv.changed();
+      this.message(`🔨 ${ITEMS[id].name} 강화 실패… 비용만 잃었다 (+${plus} 유지)`, "#ff9c9c");
+      this.ui.toast("강화 실패", `+${plus} 유지`);
+      return "fail";
+    }
+    /** 안내인: 다음 층 지도 */
+    get chartTarget() {
+      const i = this.dungeon.floorIndex + 1;
+      return i < this.dungeon.floorCount ? i : null;
+    }
+    buyChart() {
+      const i = this.chartTarget;
+      if (i == null || this.charts.includes(i)) return false;
+      if (!this.pay(chartCost(i))) return false;
+      this.charts.push(i);
+      this.message(`${i + 1}층 지도를 샀다. 내려가면 모든 방과 계단 위치가 보인다.`, "#9ad0ff");
+      return true;
+    }
+    chartFloor() {
+      const f = this.dungeon.floor;
+      if (f.charted) return;
+      f.charted = true;
+      for (const c of f.cells) c.known = true;
+    }
     useProp(o) {
       if (o.kind === "npc") {
         const n = o.npc;
+        if (n.shop) {
+          this.message(`${n.name}: “${n.shopLine || n.lines[0]}”`, "#ffd27f");
+          this.ui.openShop(n.id);
+          return;
+        }
         o.lineIdx = ((o.lineIdx ?? -1) + 1) % n.lines.length;
         this.message(`${n.name}: “${n.lines[o.lineIdx]}”`, "#ffd27f");
         return;
@@ -7615,6 +8142,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         const rid = this.rollRecipe();
         if (rid) this.spawnPickup("recipe_" + rid, r.chest.x, r.chest.y);
       }
+      this.addGold(goldFor("chest", this.depth, this.rng), r.chest.x, r.chest.y - 60);
       this.fxRing(r.chest.x, r.chest.y, 70, "#ffd700");
       this.message("보물상자를 열었다!", "#ffd700");
     }
@@ -7763,6 +8291,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         const rid = this.rollRecipe();
         if (rid) this.spawnPickup("recipe_" + rid, e.x, e.y);
       }
+      if (!e.summonedBy) this.addGold(goldFor(e.boss ? "boss" : e.elite ? "elite" : "mob", this.depth, this.rng), e.x, e.y - e.h - 30);
       if (e.deathBurst) {
         this.spawnHitbox({ owner: "enemy", x1: e.x - e.deathBurst.radius, x2: e.x + e.deathBurst.radius, y: e.y, laneTol: 70, atk: Math.round(e.atk * e.deathBurst.mul), knock: 260, tier: e.def.tier, ttl: 0.1, zMax: 60, fromX: e.x });
         this.fxRing(e.x, e.y, e.deathBurst.radius, "#ff8a3d");
@@ -7814,12 +8343,12 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     }
     // ── 장비 프록 ───────────────────────────────────────────
     updateProcs(dt) {
-      const alive = this.room.enemies.some((e) => e.state !== "dead");
+      const alive2 = this.room.enemies.some((e) => e.state !== "dead");
       for (const pr of this.inv.procs()) {
         if (pr.trigger !== "interval") continue;
         const key = pr.source + ":" + pr.slot;
         this.procTimers[key] = (this.procTimers[key] || 0) + dt;
-        if (this.procTimers[key] >= pr.every && alive) {
+        if (this.procTimers[key] >= pr.every && alive2) {
           this.procTimers[key] = 0;
           this.fireProc(pr, { x: this.player.x, y: this.player.y });
         }
@@ -8004,6 +8533,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       if (this.phase !== "play") return;
       this.phase = kind === "dead" ? "gameover" : "victory";
       this.ui.closeAll();
+      this.tips.close();
       this.ui.showEnd({
         kind,
         title: kind === "dead" ? "쓰러졌다…" : kind === "boss" ? "99층 정복 — 던전의 주인을 쓰러뜨렸다!" : "귀환 포탈로 탈출!",
@@ -8014,12 +8544,19 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         depth: this.maxDepth + 1,
         time: this.time,
         skills: this.skills.learnedList(),
-        picks: this.skills.pickCount
+        picks: this.skills.pickCount,
+        deaths: this.deaths,
+        reviveAt: kind === "dead" ? this.lastSanctuary == null ? "던전 입구(1층)" : `${this.lastSanctuary + 1}층 안식처` : null
       });
     }
     // ── 루프 ────────────────────────────────────────────────
     update(dt) {
       if (this.phase !== "play" || this.paused) return;
+      this.tips.update(dt);
+      if (this.slowT > 0) {
+        this.slowT -= dt;
+        dt *= 0.35;
+      }
       if (this.hitStop > 0) {
         this.hitStop -= dt;
         for (const f of this.fx) f.t += dt * 0.5;
@@ -8156,7 +8693,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
   };
 
   // src/ui/UI.js
-  var PANELS = ["load", "save", "settings", "title", "select", "reward", "skills", "inventory", "map", "end", "toast", "storage", "sanctuary", "puzzle", "recipe", "intro"];
+  var PANELS = ["load", "save", "settings", "title", "select", "reward", "skills", "inventory", "map", "end", "toast", "storage", "sanctuary", "puzzle", "recipe", "intro", "shop", "code"];
   var esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
   var UI = class {
     constructor(root, game2) {
@@ -8172,6 +8709,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         root.appendChild(el);
         this.panels[id] = el;
       }
+      this.tipEl = document.createElement("div");
+      this.tipEl.className = "tipcard";
+      this.tipEl.hidden = true;
+      root.appendChild(this.tipEl);
       root.addEventListener("click", (e) => {
         const t = e.target.closest("[data-action]");
         if (!t) {
@@ -8185,8 +8726,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         t.blur();
       });
       game2.bus.on("inv:changed", () => {
-        if (this.open.has("inventory")) this.render("inventory");
-        if (this.open.has("storage")) this.render("storage");
+        for (const id of ["inventory", "storage", "shop"]) if (this.open.has(id)) this.render(id);
       });
       game2.bus.on("skill:learned", () => this.open.has("skills") && this.render("skills"));
       game2.bus.on("skill:quickslot", () => this.open.has("skills") && this.render("skills"));
@@ -8227,9 +8767,25 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         this.drawPaperdoll();
       } else if (id === "map") this.show("map", this.mapHtml());
       else if (id === "storage") this.show("storage", this.storageHtml());
+      else if (id === "shop") this.show("shop", this.shopHtml());
+    }
+    /** B4 첫 플레이 안내 카드 (게임을 멈추지 않는다) */
+    showTip(tip, touch2, done) {
+      const el = this.tipEl;
+      el.className = `tipcard${done ? " done" : ""}`;
+      el.innerHTML = `<div class="tt">${done ? "✓" : "💡"} ${esc(tip.title)}<small>첫 플레이 안내</small></div><div>${tip.body(touch2)}</div>${done ? "" : '<button class="off" data-action="tips-off">안내 끄기</button>'}`;
+      el.hidden = false;
+    }
+    hideTip() {
+      if (this.tipEl) this.tipEl.hidden = true;
+    }
+    openShop(npcId) {
+      this.shopNpc = npcId;
+      this.shopTab = "buy";
+      this.open.has("shop") ? this.render("shop") : this.openWindow("shop");
     }
     handle(action, el) {
-      var _a4, _b, _c, _d, _e;
+      var _a4, _b, _c, _d, _e, _f, _g;
       const g = this.game;
       switch (action) {
         case "start":
@@ -8322,6 +8878,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           this.hide("end");
           this.showSelect();
           break;
+        case "revive":
+          this.hide("end");
+          g.revive();
+          break;
         case "continue":
           this.hide("title");
           if (!g.loadRun(SaveSystem.peek())) this.showTitle();
@@ -8410,6 +8970,68 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           this.hide("sanctuary");
           g.revisitBand(+el.dataset.band);
           break;
+        case "code-export":
+          this.showCodeExport(el.dataset.slot);
+          break;
+        case "code-import":
+          this.showCodeImport();
+          break;
+        case "code-import-slot":
+          this.importCodeTo(el.dataset.slot);
+          break;
+        case "code-back":
+          this.hide("code");
+          this.showLoad();
+          break;
+        case "code-copy": {
+          const ta = this.panels.code.querySelector("textarea"), msg = this.panels.code.querySelector(".codemsg");
+          const done = (ok) => {
+            msg.innerHTML = ok ? '<span class="ok">✓ 복사했다</span>' : "코드를 길게 눌러 전체 선택 후 복사하세요.";
+          };
+          ta.select();
+          if ((_f = navigator.clipboard) == null ? void 0 : _f.writeText) navigator.clipboard.writeText(ta.value).then(() => done(true), () => {
+            var _a5;
+            return done((_a5 = document.execCommand) == null ? void 0 : _a5.call(document, "copy"));
+          });
+          else done((_g = document.execCommand) == null ? void 0 : _g.call(document, "copy"));
+          break;
+        }
+        case "tips-off":
+          g.tips.disable();
+          g.message("첫 플레이 안내를 껐다. 설정에서 다시 켤 수 있다.", "#aaa");
+          break;
+        case "tips-reset":
+          g.tips.reset();
+          this.showSettings();
+          break;
+        case "shop-tab":
+          this.shopTab = el.dataset.tab;
+          this.render("shop");
+          break;
+        case "shop-buy":
+          g.buy(el.dataset.id, +el.dataset.n || 1);
+          this.render("shop");
+          break;
+        case "shop-sell":
+          g.sell(el.dataset.id, el.dataset.n === "all" ? Infinity : +el.dataset.n || 1);
+          this.render("shop");
+          break;
+        case "shop-repair":
+          g.repairItem(el.dataset.id);
+          this.render("shop");
+          break;
+        case "shop-repair-all":
+          for (const id of this.smithItems()) if (g.inv.durOf(id) < 100 && !g.repairItem(id)) break;
+          this.render("shop");
+          break;
+        case "shop-enhance":
+          g.enhance(el.dataset.id);
+          this.render("shop");
+          break;
+        case "shop-chart":
+          g.buyChart();
+          this.render("shop");
+          break;
       }
     }
     // ── 화면들 ──────────────────────────────────────────────
@@ -8418,7 +9040,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.show("title", `
       <div class="win title menu">
         <h1>ROGUE COMBO</h1>
-        <p class="small">${true ? "v0.1.0 (2026-09-22)" : "dev"} · 프로토타입 테스트 빌드</p>
+        <p class="small">${true ? "v0.4.0 (2026-09-28)" : "dev"} · 프로토타입 테스트 빌드</p>
         <p class="sub">행동 기반 성장 · 커맨드 콤보 · 미로 던전 — 2D 횡스크롤 액션 로그라이크</p>
         <div class="menu-list">
           <button class="big" data-action="start">새 게임</button>
@@ -8444,9 +9066,41 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.hide("title");
       this.hide("end");
       const rows = SaveSystem.list().map(({ slot, data }) => `<div class="item"><span><b class="slotname">${this.slotLabel(slot)}</b><br>${this.slotInfo(data)}</span><span class="acts">
-      ${data ? `<button data-action="load-slot" data-slot="${slot}">불러오기</button><button class="x" data-action="load-del" data-slot="${slot}" title="삭제">✕</button>` : ""}</span></div>`).join("");
-      this.show("load", `<div class="win"><h2>📂 불러오기</h2><p class="sub">저장한 안식처에서 이어서 시작합니다.</p><div class="items">${rows}</div>
-      <div class="row"><button class="big ghost" data-action="back-title">돌아가기</button></div></div>`);
+      ${data ? `<button data-action="load-slot" data-slot="${slot}">불러오기</button><button class="ghost" data-action="code-export" data-slot="${slot}" title="다른 기기로 옮길 저장 코드">코드</button><button class="x" data-action="load-del" data-slot="${slot}" title="삭제">✕</button>` : ""}</span></div>`).join("");
+      this.show("load", `<div class="win"><h2>📂 불러오기</h2><p class="sub">저장한 안식처에서 이어서 시작합니다. <b>코드</b>로 다른 기기(PC↔폰)에 옮길 수 있습니다.</p><div class="items">${rows}</div>
+      <div class="row"><button class="big alt" data-action="code-import">📋 코드 붙여넣기</button><button class="big ghost" data-action="back-title">돌아가기</button></div></div>`);
+    }
+    /** 저장 코드 내보내기 / 가져오기 (기기 간 이동) */
+    async showCodeExport(slot) {
+      const code = await SaveSystem.exportCode(slot);
+      this.hide("load");
+      this.show("code", `<div class="win"><h2>📤 ${this.slotLabel(slot)} 저장 코드</h2>
+      <p class="sub">아래 코드를 복사해 다른 기기의 <b>불러오기 → 코드 붙여넣기</b>에 넣으세요. (${code ? code.length.toLocaleString() : 0}자)</p>
+      <textarea class="code" readonly>${esc(code || "")}</textarea><p class="note codemsg"></p>
+      <div class="row"><button class="big" data-action="code-copy">복사</button><button class="big ghost" data-action="code-back">돌아가기</button></div></div>`);
+      this.panels.code.querySelector("textarea").select();
+    }
+    showCodeImport() {
+      this.hide("load");
+      this.show("code", `<div class="win"><h2>📥 저장 코드 붙여넣기</h2>
+      <p class="sub">다른 기기에서 복사한 <b>RC1:…</b> 코드를 붙여넣고, 넣을 슬롯을 고르세요.</p>
+      <textarea class="code" placeholder="RC1:..."></textarea><p class="note codemsg"></p>
+      <div class="row">${["1", "2", "3"].map((s) => `<button data-action="code-import-slot" data-slot="${s}">슬롯 ${s}에 넣기${SaveSystem.has(s) ? " (덮어쓰기)" : ""}</button>`).join("")}<button class="ghost" data-action="code-back">돌아가기</button></div></div>`);
+      this.panels.code.querySelector("textarea").focus();
+    }
+    async importCodeTo(slot) {
+      const ta = this.panels.code.querySelector("textarea"), msg = this.panels.code.querySelector(".codemsg");
+      const r = await SaveSystem.importCode(ta.value);
+      if (!r.ok) {
+        msg.innerHTML = `<span class="bad">✕ ${esc(r.error)}</span>`;
+        return;
+      }
+      if (SaveSystem.has(slot) && !window.confirm(`${this.slotLabel(slot)} 을(를) 덮어쓸까요?`)) return;
+      const { v, slot: _s, ...data } = r.data;
+      SaveSystem.write(data, slot);
+      this.hide("code");
+      this.showLoad();
+      this.toast("저장 코드 가져옴", `${this.slotLabel(slot)} · ${(data.floorIndex || 0) + 1}층`);
     }
     /** 기록석 저장 창 (안식처) */
     showSave() {
@@ -8467,6 +9121,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const st = this.game.settings;
       this.show("settings", `<div class="win"><h2>⚙️ 설정</h2><div class="items">
       <div class="item"><span><b>화면 흔들림</b><br><small class="dim">타격·충격파 때 화면이 흔들립니다</small></span><button data-action="toggle-shake">${st.shake ? "켬" : "끔"}</button></div>
+      <div class="item"><span><b>첫 플레이 안내</b><br><small class="dim">${this.game.tips.off ? "꺼짐" : `본 안내 ${this.game.tips.seen.size}개`} — 처음부터 다시 보기</small></span><button data-action="tips-reset">다시 보기</button></div>
       <div class="item"><span><b>터치 조작 표시</b><br><small class="dim">PC 에서도 터치 버튼을 표시</small></span><button data-action="toggle-touch">${((_a4 = document.getElementById("touch")) == null ? void 0 : _a4.hidden) ? "끔" : "켬"}</button></div>
       </div><div class="row"><button class="big ghost" data-action="back-title">돌아가기</button></div></div>`);
     }
@@ -8480,7 +9135,10 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ${this.game.rescued.length ? `<p class="note">구출한 사람들: ${this.game.rescued.map((id) => {
         var _a4;
         return esc(((_a4 = NPC_BY_ID[id]) == null ? void 0 : _a4.name) || id);
-      }).join(" · ")}</p>` : '<p class="note dim">아직 구출한 사람이 없다. 각 10층 구간 어딘가에 감옥 방이 있다.</p>'}
+      }).join(" · ")}${this.game.rescued.some((id) => {
+        var _a4;
+        return (_a4 = NPC_BY_ID[id]) == null ? void 0 : _a4.shop;
+      }) ? "<br>상인·대장장이·연금술사·안내인 앞에서 <b>J</b> = 거래 (소지금 " + this.game.gold + " G)" : ""}</p>` : '<p class="note dim">아직 구출한 사람이 없다. 각 10층 구간 어딘가에 감옥 방이 있다.</p>'}
       <p class="sub">자동 저장되었습니다. 모닥불·창고·제작대를 이용하고, <b>기록석</b>에서 슬롯에 저장할 수 있습니다.${revisit ? "<br>계단으로 내려가거나 이전 구간을 다시 탐험할 수 있습니다. 다시 탐험하면 그 구간의 방 배치와 몬스터가 모두 새로 섞입니다." : "<br>쉼터에는 계단이 없습니다. 문으로 계속 나아가세요."}</p>
       <div class="row"><button class="big" data-action="sanct-next">${revisit ? "이곳에 머물기 / 다음 층으로" : "계속"}</button></div>
       ${revisit ? `<h3>이전 구간 재탐험</h3><div class="row wrap">${opts.join("")}</div>` : ""}
@@ -8553,6 +9211,61 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         (_a4 = P2.onSolve) == null ? void 0 : _a4.call(P2);
       }
     }
+    /** 대장장이 대상: 장착 중 + 가방의 장비 (id 단위) */
+    smithItems() {
+      const inv = this.game.inv, ids = Object.values(inv.equipped).filter(Boolean);
+      for (const x of inv.list()) if (isEquip(x.def) && !ids.includes(x.id)) ids.push(x.id);
+      return ids;
+    }
+    /** M4 NPC 거래 창 */
+    shopHtml() {
+      const g = this.game, inv = g.inv, n = NPC_BY_ID[this.shopNpc], kind = n == null ? void 0 : n.shop;
+      const G2 = (v) => `<b class="gold">${v} G</b>`;
+      const name = (id, extra = "") => {
+        const d = ITEMS[id];
+        return `${d.icon} <span style="color:${gradeOf(d).color}">${esc(d.name)}</span>${extra}`;
+      };
+      const buyRow = (id, desc = "") => {
+        const p = priceOf(id);
+        return `<div class="item"><span>${name(id)} <small class="dim">보유 ${inv.count(id)}${desc ? " · " + esc(desc) : ""}</small></span><span class="acts">${G2(p)}
+      <button data-action="shop-buy" data-id="${id}" data-n="1" ${g.gold >= p ? "" : "disabled"}>1개</button><button data-action="shop-buy" data-id="${id}" data-n="5" ${g.gold >= p ? "" : "disabled"}>5개</button></span></div>`;
+      };
+      let body = "", tabs = "";
+      if (kind === "merchant") {
+        tabs = `<div class="row left tabs">${[["buy", "사기"], ["sell", "팔기"]].map(([t, l]) => `<button class="${this.shopTab === t ? "sel" : "ghost"}" data-action="shop-tab" data-tab="${t}">${l}</button>`).join("")}</div>`;
+        if (this.shopTab === "sell") {
+          const byId = /* @__PURE__ */ new Map();
+          for (const x of inv.list()) if (canSell(x.id)) byId.set(x.id, (byId.get(x.id) || 0) + x.count);
+          body = [...byId].map(([id, c]) => `<div class="item"><span>${name(id)} <b>×${c}</b></span><span class="acts">${G2(sellPriceOf(id))}<small class="dim">/개</small>
+          <button data-action="shop-sell" data-id="${id}" data-n="1">1개</button><button data-action="shop-sell" data-id="${id}" data-n="all">전부 (${sellPriceOf(id) * c} G)</button></span></div>`).join("") || '<p class="dim">팔 수 있는 것이 없다. 장착 중인 장비는 팔 수 없다.</p>';
+          body = `<p class="sub">판매가는 가격의 30%. 레시피 두루마리·재료·장비·물약을 팔 수 있다.</p><div class="items tall">${body}</div>`;
+        } else {
+          const band = Math.min(10, Math.floor(g.dungeon.floorIndex / 10) + 1);
+          const ids = Object.keys(ITEMS).filter((id) => ITEMS[id].type === "material" && ITEMS[id].band <= band && gradeOf(ITEMS[id]).rank <= 2);
+          body = `<p class="sub">지금까지 지나온 구간(${band}구간까지)의 일반·고급 재료만 판다. 희귀·전설 재료는 던전에서.</p><div class="items tall">${ids.map((id) => buyRow(id, `${ITEMS[id].band}구간`)).join("")}</div>`;
+        }
+      } else if (kind === "smith") {
+        const ids = this.smithItems();
+        const rows = ids.map((id) => {
+          const du = inv.durOf(id), pl = inv.plusOf(id), rc = repairCost(id, du), ec = enhanceCost(id, pl), eq = Object.values(inv.equipped).includes(id);
+          const matOk = !(ec == null ? void 0 : ec.mat) || inv.count(ec.mat) >= ec.n;
+          const enh = ec ? `<button data-action="shop-enhance" data-id="${id}" ${g.gold >= ec.gold && matOk ? "" : "disabled"} title="성공률 ${Math.round(ec.chance * 100)}%">+${pl + 1} 강화 · ${ec.gold} G${ec.mat ? ` + ${ITEMS[ec.mat].icon}${ec.n}` : ""} · ${Math.round(ec.chance * 100)}%</button>` : '<small class="dim">최대 강화</small>';
+          return `<div class="item"><span>${name(id, pl ? ` <b class="plus">+${pl}</b>` : "")}${eq ? ' <small class="dim">장착 중</small>' : ""}<br>
+          <small class="${du <= 0 ? "bad" : du < 50 ? "bad" : "dim"}">내구도 ${du}/100${du <= 0 ? " — 망가짐" : ""}</small>${(ec == null ? void 0 : ec.mat) ? ` <small class="${matOk ? "dim" : "bad"}">${esc(ITEMS[ec.mat].name)} ${inv.count(ec.mat)}/${ec.n}</small>` : ""}</span>
+          <span class="acts">${rc ? `<button data-action="shop-repair" data-id="${id}" ${g.gold >= rc ? "" : "disabled"}>수리 ${rc} G</button>` : ""}${enh}</span></div>`;
+        }).join("") || '<p class="dim">가진 장비가 없다.</p>';
+        const need = ids.reduce((s, id) => s + repairCost(id, inv.durOf(id)), 0);
+        body = `<p class="sub">강화 +1 마다 능력치 +10% (최대 +${PLUS_MAX}). +4 는 70%, +5 는 50% 확률 — 실패하면 비용만 잃고 단계는 그대로. 강화·내구도는 같은 종류 장비끼리 공유된다.</p>
+        <div class="items tall">${rows}</div>${need ? `<div class="row"><button data-action="shop-repair-all" ${g.gold >= need ? "" : "disabled"}>모두 수리 (${need} G)</button></div>` : ""}`;
+      } else if (kind === "alchemist") {
+        body = `<div class="items">${buyRow("hp_potion", ITEMS.hp_potion.desc)}${buyRow("mp_potion", ITEMS.mp_potion.desc)}${buyRow("lantern", "안개 방에 들어서면 자동으로 켜져 함정을 모두 드러낸다")}</div>`;
+      } else if (kind === "guide") {
+        const t = g.chartTarget, have = t != null && g.charts.includes(t), cost = t != null ? chartCost(t) : 0;
+        body = t == null ? '<p class="dim">더 아래는 없다.</p>' : `<div class="items"><div class="item"><span>🗺️ <b>${t + 1}층 지도</b><br><small class="dim">내려가면 모든 방의 종류(계단·보물·감옥·귀환 포탈)가 지도에 표시된다. 안개 방은 여전히 안개.</small></span>
+        <span class="acts">${have ? '<b class="ok">구입함 ✓</b>' : `${G2(cost)} <button data-action="shop-chart" ${g.gold >= cost ? "" : "disabled"}>사기</button>`}</span></div></div>`;
+      }
+      return `<div class="win wide">${this.header(`${esc((n == null ? void 0 : n.name) || "")} — ${esc((n == null ? void 0 : n.role) || "")}`, "shop", `소지금 ${g.gold} G`)}${tabs}${body}</div>`;
+    }
     storageHtml() {
       var _a4;
       const inv = this.game.inv;
@@ -8572,7 +9285,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       const pages = [
         { icon: "🌫️", title: "재의 마을", body: `산 아래 작은 마을에 어느 날 <b>저주 안개</b>가 내려앉았다.<br>안개는 사람들을 삼켜 산속 던전 깊은 곳으로 끌고 갔고, 남은 이들은 마을을 떠났다.<br><br>당신은 남기로 했다. 검과 마법, 그리고 몸으로 익힌 것만 믿고 안개의 근원을 향해 내려간다.` },
         { icon: "🏔️", title: "99층 아래, 안개의 심장", body: `던전은 <b>99층</b>이다. 층마다 미로처럼 방이 얽혀 있고, 매번 모양이 바뀐다.<br>10층마다 <b>보스</b>가 길을 막고, 그 뒤에는 <b>안식처</b>가 있어 쉬고, 창고를 쓰고, 기록을 남길 수 있다.<br><br>층 어딘가에는 <b>갇힌 주민</b>이 있다. 구출하면 안식처 모닥불 곁에 모여든다.<br>가장 깊은 곳의 <b>안개의 심장</b>을 부수는 것이 이 여정의 끝이다.` },
-        { icon: "⚔️", title: "행동이 곧 성장", body: `이 게임에는 레벨업 버튼이 없다.<br>· <b>때리면 힘</b>이, <b>피하면 민첩</b>이, <b>맞거나 막으면 체력</b>이, <b>마법을 쓰면 마력</b>이 조금씩 오른다.<br>· 스탯이 쌓이면 당신의 싸움 방식대로 <b>직업</b>이 정해지고 궁극기가 열린다.<br>· 방 3개를 돌파할 때마다 <b>스킬 포인트</b>를 얻어 스킬을 고른다(저축 최대 3, 총 40회).<br>· 몬스터는 <b>재료와 레시피</b>를 떨어뜨린다. 장비는 오직 <b>제작</b>으로만 얻는다. 무기에는 저절로 발동하는 힘이 깃들어 있다.<br>· <b>짙은 안개 방</b>에는 몬스터 대신 <b>함정</b>과 <b>봉인 제단</b>이 있다. 퍼즐(그림 맞추기·불 끄기·미니 스도쿠)을 풀면 <b>상급 재료와 레시피</b>를 얻는다(선택).` },
+        { icon: "⚔️", title: "행동이 곧 성장", body: `이 게임에는 레벨업 버튼이 없다.<br>· <b>때리면 힘</b>이, <b>피하면 민첩</b>이, <b>맞거나 막으면 체력</b>이, <b>마법을 쓰면 마력</b>이 조금씩 오른다.<br>· 스탯이 쌓이면 당신의 싸움 방식대로 <b>직업</b>이 정해지고 궁극기가 열린다.<br>· 방 3개를 돌파할 때마다 <b>스킬 포인트</b>를 얻어 스킬을 고른다(저축 최대 3, 총 40회).<br>· 몬스터는 <b>재료와 레시피</b>를 떨어뜨린다. 장비는 오직 <b>제작</b>으로만 얻는다. 무기에는 저절로 발동하는 힘이 깃들어 있다.<br>· <b>짙은 안개 방</b>에는 몬스터 대신 <b>함정</b>과 <b>봉인 제단</b>이 있다. 퍼즐(그림 맞추기·불 끄기·미니 스도쿠)을 풀면 <b>상급 재료와 레시피</b>를 얻는다(선택).<br>· 몬스터·상자에서 <b>골드</b>가 나온다. 구출한 상인·대장장이·연금술사·안내인과 안식처에서 거래한다.<br>· 쓰러지면 <b>마지막 안식처에서 다시 일어난다</b>. 대신 스탯 3%·장비 내구도·가방 재료 일부를 잃는다.` },
         { icon: touch2 ? "📱" : "⌨️", title: "조작", body: touch2 ? `왼쪽 화면 <b>아무 곳이나 누르면 조이스틱</b>이 생긴다. 오른쪽은 <b>공격·방어·회피·점프·물약</b>.<br><b>스킬 1~4</b> 버튼으로 스킬을 쓰고, <b>마법</b> 버튼을 켜면 공격 버튼이 마법(마력탄·마법 커맨드)이 된다.<br>조이스틱을 톡톡 튕긴 뒤 공격을 누르면 커맨드 스킬도 나간다(예: ↓ → 공격).<br>적이 없을 때 문·상자·제단·사람 앞에 서면 <b>공격 버튼이 입장·열기·퍼즐·대화</b>로 바뀐다. 위쪽 <b>≡ 메뉴</b>에 스킬·가방·지도, <b>미니맵</b>을 누르면 지도.` : `<b>W A S D</b> 이동 · <b>J</b> 공격(연타 콤보) · <b>K</b> 마법 공격(마력탄) · <b>L</b> 방어 · <b>Shift</b> 회피 · <b>Space</b> 점프<br><b>↑+J 올려치기</b>로 적을 띄우고 <b>J</b>로 공중에서 이어 때린 뒤 <b>↓+J 내려찍기</b>. 적의 <b>붉은 예고(!)</b> 직전에 <b>L</b>을 누르면 흘리기 — 다음 J가 강한 반격.<br>물리 스킬: 방향 조합 + <b>J</b> (예: S D J = ↓→ 강타). 마법 스킬: 방향 조합 + <b>K</b>. <b>→(D)는 바라보는 방향</b>. 단축 스킬 1~4.<br>적이 없을 때 문·상자·제단·사람 앞에서 <b>J</b> = 상호작용 · <b>Q</b> 물약 · <b>T</b> 스킬창 · <b>I</b> 가방 · <b>M</b> 지도` }
       ];
       const p = pages[Math.min(page, pages.length - 1)], last2 = page >= pages.length - 1, st = thenStart ? "1" : "0";
@@ -8638,12 +9351,13 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       this.show("end", `
       <div class="win ${s.kind === "dead" ? "dead" : "win-good"}">
         <h1>${esc(s.title)}</h1>
-        <p class="sub">${s.kind === "escape" ? "보스를 잡지 않고 던전을 빠져나왔다." : s.kind === "boss" ? "최종 보스를 처치했다." : "다음 런에서는 다른 루트를 찾아보자."}</p>
+        <p class="sub">${s.kind === "escape" ? "보스를 잡지 않고 던전을 빠져나왔다." : s.kind === "boss" ? "최종 보스를 처치했다." : `<b>${esc(s.reviveAt)}</b>에서 다시 일어날 수 있다. 진행은 그대로지만 대가를 치른다.`}</p>
+        ${s.kind === "dead" ? `<p class="note">부활 대가: 모든 스탯 −${Math.round(BALANCE.death.statLoss * 100)}% · 장착 장비 1~${BALANCE.death.durItemsMax}개 내구도 −${BALANCE.death.durLoss} (0 이 되면 능력치 절반·특수효과 정지) · 가방 재료 ${Math.round(BALANCE.death.matLoss * 100)}% 손실${s.deaths ? ` · 지금까지 ${s.deaths}번 쓰러짐` : ""}</p>` : ""}
         <div class="cols2">
           <div><h3>최종 직업</h3><p><b>${esc(s.job.name)}</b></p><h3>스탯</h3><ul>${stats}</ul></div>
           <div><h3>기록</h3><ul><li>도달 층: ${s.depth}</li><li>방문 방: ${s.rooms}</li><li>처치: ${s.kills}</li><li>스킬 픽: ${s.picks}</li><li>시간: ${m}분 ${sec}초</li></ul><h3>스킬</h3><p class="small">${skills}</p></div>
         </div>
-        <div class="row"><button class="big" data-action="restart">다시 도전</button>${SaveSystem.hasAny() ? '<button class="big alt" data-action="load-menu">불러오기</button>' : ""}</div>
+        <div class="row">${s.kind === "dead" ? '<button class="big" data-action="revive">일어나기</button><button class="big ghost" data-action="restart">새 캐릭터로</button>' : '<button class="big" data-action="restart">다시 도전</button>'}${SaveSystem.hasAny() ? '<button class="big alt" data-action="load-menu">불러오기</button>' : ""}</div>
       </div>`);
     }
     toast(title, sub) {
@@ -8686,10 +9400,11 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
     </div>`;
     }
     inventoryHtml() {
+      var _a4;
       const g = this.game, p = g.player, d = p.derived, inv = g.inv, s = g.stats;
       const sName = (id) => {
-        var _a4;
-        return ((_a4 = SKILL_BY_ID[id]) == null ? void 0 : _a4.name) || id;
+        var _a5;
+        return ((_a5 = SKILL_BY_ID[id]) == null ? void 0 : _a5.name) || id;
       };
       const statRows = STAT_KEYS.map((k) => `<tr><td>${STAT_LABEL[k]} ${k}</td><td><b>${s.value(k).toFixed(2)}</b></td><td class="pb"><i style="width:${s.progress(k) * 100 | 0}%"></i></td></tr>`).join("");
       const derived = [
@@ -8706,10 +9421,15 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
       ].map(([k, v]) => `<tr><td>${k}</td><td colspan="2"><b>${v}</b></td></tr>`).join("");
       const slotBtn = (slot) => {
         const id = inv.equipped[slot], it = id && ITEMS[id];
-        return `<button class="pslot ${it ? "on" : ""} s-${slot}" data-action="${it ? "unequip" : "noop"}" data-slot="${slot}" title="${it ? esc(it.name) + " (누르면 해제)" : SLOT_LABEL[slot]}"><span class="ic">${it ? it.icon : "＋"}</span><small>${it ? esc(it.name) : SLOT_LABEL[slot]}</small></button>`;
+        const du = it ? inv.durOf(id) : 100, bar = it ? `<i class="dur ${du <= 0 ? "broken" : du < 50 ? "low" : ""}"><i style="width:${du}%"></i></i>` : "";
+        return `<button class="pslot ${it ? "on" : ""} s-${slot}" data-action="${it ? "unequip" : "noop"}" data-slot="${slot}" title="${it ? esc(it.name) + ` · 내구도 ${du}/100 (누르면 해제)` : SLOT_LABEL[slot]}"><span class="ic">${it ? it.icon : "＋"}</span><small>${it ? esc(it.name) : SLOT_LABEL[slot]}</small>${bar}</button>`;
+      };
+      const durTxt = (id) => {
+        const du = inv.durOf(id);
+        return du >= 100 ? "" : du <= 0 ? ' <b class="bad">망가짐 — 능력치 절반·특수효과 정지</b>' : ` <small class="${du < 50 ? "bad" : "dim"}">내구도 ${du}/100</small>`;
       };
       const equip = `<div class="pdoll"><canvas class="pdoll-cv" width="220" height="230"></canvas>${slotBtn("weapon")}${slotBtn("armor")}${slotBtn("accessory")}</div>
-      <div class="pdesc">${Object.entries(inv.equipped).map(([slot, id]) => id ? `<div><b style="color:${gradeOf(ITEMS[id]).color}">${ITEMS[id].icon} ${esc(ITEMS[id].name)}</b> <small>${esc(describeItem(ITEMS[id], sName))}</small></div>` : "").join("") || '<span class="dim">장비 없음 — 가방에서 장비를 눌러 장착</span>'}</div>`;
+      <div class="pdesc">${Object.entries(inv.equipped).map(([slot, id]) => id ? `<div><b style="color:${gradeOf(ITEMS[id]).color}">${ITEMS[id].icon} ${esc(ITEMS[id].name)}${inv.plusOf(id) ? ` +${inv.plusOf(id)}` : ""}</b>${durTxt(id)} <small>${esc(describeItem(ITEMS[id], sName))}</small></div>` : "").join("") || '<span class="dim">장비 없음 — 가방에서 장비를 눌러 장착</span>'}</div>`;
       const sel = this.selSlot, cells = inv.bag.map((x, i) => {
         if (!x) return `<div class="bs empty"></div>`;
         const def = ITEMS[x.id], gr = gradeOf(def);
@@ -8720,17 +9440,17 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
         const x = inv.bag[sel], def = ITEMS[x.id];
         const acts = [];
         if (isEquip(def)) acts.push(`<button data-action="bagact" data-op="equip" data-i="${sel}">장착</button>`);
-        if (def.type === "consumable") acts.push(`<button data-action="bagact" data-op="use" data-i="${sel}">사용</button>`);
+        if (def.type === "consumable" && !((_a4 = def.effect) == null ? void 0 : _a4.lantern)) acts.push(`<button data-action="bagact" data-op="use" data-i="${sel}">사용</button>`);
         if (def.type === "recipe") acts.push(`<button data-action="bagact" data-op="read" data-i="${sel}">읽기 (습득)</button>`);
         acts.push(`<button data-action="bagact" data-op="discard" data-i="${sel}">1개 버리기</button>`, `<button data-action="bagact" data-op="discardAll" data-i="${sel}">전부 버리기</button>`);
         const info = isEquip(def) ? describeItem(def, sName) : def.type === "recipe" ? `읽으면 ${ITEMS[def.teaches].name} 제작법을 배운다` : def.desc || (def.type === "material" ? `재료 (${def.band}구간)` : "");
-        detail = `<div class="bdetail"><b style="color:${gradeOf(def).color}">${def.icon} ${esc(def.name)}</b> <i class="gtag" style="color:${gradeOf(def).color}">${gradeOf(def).name}</i> <span class="dim">×${x.count}</span><div class="small">${esc(info)}</div><div class="row left">${acts.join("")}</div></div>`;
+        detail = `<div class="bdetail"><b style="color:${gradeOf(def).color}">${def.icon} ${esc(def.name)}</b> <i class="gtag" style="color:${gradeOf(def).color}">${gradeOf(def).name}</i> <span class="dim">×${x.count}</span>${isEquip(def) ? durTxt(x.id) : ""}<div class="small">${esc(info)}</div><div class="row left">${acts.join("")}</div></div>`;
       }
       const recipes = inv.recipeList().map(({ id, def, can }) => {
         const needs = Object.entries(def.needs).map(([m, n]) => `<span class="${inv.count(m) >= n ? "ok" : "no"}">${ITEMS[m].icon}${esc(ITEMS[m].name)} ${inv.count(m)}/${n}</span>`).join(" ");
         return `<div class="item"><span>${def.icon} <b style="color:${gradeOf(def).color}">${esc(def.name)}</b> <i class="gtag" style="color:${gradeOf(def).color}">${gradeOf(def).name}</i> <small>${esc(isEquip(def) ? describeItem(def, sName) : def.desc || "")}</small><br><small>${needs}</small></span><span class="acts"><button data-action="craft" data-id="${id}" ${can ? "" : "disabled"}>제작</button><button class="x" data-action="forget" data-id="${id}" title="레시피 삭제">✕</button></span></div>`;
       }).join("") || '<p class="dim">아는 레시피가 없다</p>';
-      return `<div class="win wide">${this.header("장비 / 가방 / 제작", "inventory", `${esc(p.name)} · ${esc(g.jobs.current.name)} · 가방 ${inv.usedSlots}/${inv.bagSlots}칸 · 레시피 ${inv.recipes.length}/${RECIPE_LIMIT}`)}
+      return `<div class="win wide">${this.header("장비 / 가방 / 제작", "inventory", `${esc(p.name)} · ${esc(g.jobs.current.name)} · ${g.gold} G · 가방 ${inv.usedSlots}/${inv.bagSlots}칸 · 레시피 ${inv.recipes.length}/${RECIPE_LIMIT}`)}
       <div class="cols2">
         <section><h3>장비 <small>캐릭터에 바로 반영</small></h3>${equip}<h3>스탯</h3><table class="stats">${statRows}${derived}</table></section>
         <section><h3>가방 <small>${inv.usedSlots}/${inv.bagSlots}</small></h3><div class="bag">${cells}</div>${detail}
@@ -8786,6 +9506,7 @@ button.big.ghost { background: transparent; border-color: var(--line); font-size
           const b = DIRS4.map((d) => `border-${{ N: "top", E: "right", S: "bottom", W: "left" }[d]}:${c.walls[d] ? "3px solid #cfd8ff" : "3px solid transparent"}`).join(";");
           return `<div class="mc v t-${c.type} ${isCur ? "cur" : ""} ${c.cleared ? "clr" : ""}" style="${b}">${isCur ? `<span class="me">${g.player.facing > 0 ? "🧍➡" : "⬅🧍"}</span>` : ROOM_ICON[c.type]}<small>${isCur ? "현재 위치" : ROOM_TYPES[c.type]}</small></div>`;
         }
+        if (f.charted && !c.fog) return `<div class="mc k ch t-${c.type}">${ROOM_ICON[c.type]}<small>${ROOM_TYPES[c.type]}</small></div>`;
         if (c.known) return `<div class="mc k">?</div>`;
         return `<div class="mc u"></div>`;
       }).join("");
